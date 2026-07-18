@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import uuid
 
 import numpy as np
@@ -142,6 +143,22 @@ class SLAMSystem:
             self.metric_depth = None
 
         self.backend.depth_model = self.metric_depth
+
+    def release_transient_state(self) -> None:
+        """Release networks and graph state after the detached SLAM output is built."""
+        for name in (
+            "inner_filler",
+            "backend",
+            "frontend",
+            "motion_filter",
+            "buffer",
+            "sparse_tracks",
+            "metric_depth",
+            "droid_net",
+        ):
+            if hasattr(self, name):
+                delattr(self, name)
+        gc.collect()
 
     def _add_keyframe(
         self,

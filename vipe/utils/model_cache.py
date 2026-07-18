@@ -32,6 +32,7 @@ bookkeeping) is rebuilt per stream by the callers so nothing leaks between
 videos.
 """
 
+import gc
 import logging
 from typing import Callable, TypeVar
 
@@ -59,5 +60,27 @@ class ModelCache:
         return self._models[key]  # type: ignore[return-value]
 
     def clear(self) -> None:
-        """Drop all cached models (e.g. to release GPU memory)."""
+        """Drop all cached models and collect objects whose owners have finished."""
         self._models.clear()
+        gc.collect()
+
+    def pop(self, key: str) -> object | None:
+        """Drop and return one cached object, or ``None`` when absent."""
+        model = self._models.pop(key, None)
+        if model is not None:
+            logger.info("Evicting cached model '%s'", key)
+        return model
+
+    def clear_prefix(self, prefix: str) -> int:
+        """Drop all objects whose cache keys start with ``prefix``."""
+        keys = [key for key in self._models if key.startswith(prefix)]
+        for key in keys:
+            logger.info("Evicting cached model '%s'", key)
+            del self._models[key]
+        if keys:
+            gc.collect()
+        return len(keys)
+
+    def keys(self) -> tuple[str, ...]:
+        """Return the current keys for diagnostics and lifecycle tests."""
+        return tuple(self._models)

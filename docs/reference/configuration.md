@@ -139,6 +139,8 @@ Depth post-processing options.
 | Field | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
 | `depth_align_model` | str \| null | required | - | Depth model or alignment recipe used after SLAM. Examples include adaptive_unidepth-l, adaptive_unidepth-l_svda, adaptive_moge_vda, mvd_dav3, dap, and unik3d. Set to null for pose-only output. |
+| `release_completed_models` | bool | `true` | - | Release initialization and SLAM networks before depth post-processing to reduce peak memory. |
+| `cpu_knn_chunk_size` | int | `2048` | >= 1 | Maximum number of CPU KNN query points processed per distance-matrix chunk. |
 
 ### OutputConfig
 

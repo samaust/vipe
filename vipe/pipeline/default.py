@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import gc
 import logging
 import pickle
 from pathlib import Path
@@ -98,7 +99,14 @@ class DefaultAnnotationPipeline(Pipeline):
             if depth_align_model.startswith("mvd_"):
                 post_processors.append(MultiviewDepthProcessor(slam_output, model=depth_align_model))
             else:
-                post_processors.append(AdaptiveDepthProcessor(slam_output, view_idx, depth_align_model))
+                post_processors.append(
+                    AdaptiveDepthProcessor(
+                        slam_output,
+                        view_idx,
+                        depth_align_model,
+                        cpu_knn_chunk_size=self.post_cfg.cpu_knn_chunk_size,
+                    )
+                )
         return ProcessedVideoStream(video_stream, post_processors)
 
     def run(self, video_data: VideoStream | MultiviewVideoList) -> AnnotationPipelineOutput:
@@ -133,6 +141,13 @@ class DefaultAnnotationPipeline(Pipeline):
 
         slam_pipeline = SLAMSystem(device=get_device(), config=self.slam_cfg, model_cache=self.model_cache)
         slam_output = slam_pipeline.run(slam_streams, rig=slam_rig, camera_type=self.camera_type)
+
+        if self.post_cfg.release_completed_models:
+            slam_pipeline.release_transient_state()
+            for prefix in ("geocalib/", "track_anything/", "slam/", "depth/"):
+                self.model_cache.clear_prefix(prefix)
+            del slam_pipeline
+            gc.collect()
 
         if self.return_payload:
             annotate_output.payload = slam_output

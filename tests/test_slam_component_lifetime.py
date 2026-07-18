@@ -127,3 +127,15 @@ def test_slam_component_build_without_model_cache_does_not_share_droid_net(monke
     second._build_components()
 
     assert first.droid_net is not second.droid_net
+
+
+def test_release_transient_state_drops_component_references(monkeypatch) -> None:
+    monkeypatch.setattr(droid_net.DroidNet, "load_weights", lambda self: None)
+    slam = system.SLAMSystem(torch.device("cpu"), _minimal_slam_config())
+    slam.rig = _FakeRig()
+    slam._build_components()
+
+    slam.release_transient_state()
+
+    for name in ("droid_net", "buffer", "frontend", "backend", "inner_filler", "motion_filter"):
+        assert not hasattr(slam, name)

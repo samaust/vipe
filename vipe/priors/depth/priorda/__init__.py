@@ -28,9 +28,12 @@ class PriorDAModel(DepthEstimationModel):
     https://github.com/SpatialVision/Prior-Depth-Anything
     """
 
-    def __init__(self) -> None:
+    def __init__(self, cpu_knn_chunk_size: int = 8192) -> None:
         super().__init__()
-        self.model = PriorDepthAnything(device=str(get_device()))
+        self.model = PriorDepthAnything(
+            device=str(get_device()),
+            cpu_knn_chunk_size=cpu_knn_chunk_size,
+        )
 
     @property
     def depth_type(self) -> DepthType:

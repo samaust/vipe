@@ -20,11 +20,12 @@ class DepthCompletion(torch.nn.Module):
     def build(**kwargs):
         return DepthCompletion(**kwargs)
 
-    def __init__(self, args, fmde_path, device=None):
+    def __init__(self, args, fmde_path, device=None, cpu_knn_chunk_size: int = 8192):
         super().__init__()
 
         self.args = args
         self.K = args.K
+        self.cpu_knn_chunk_size = cpu_knn_chunk_size
 
         self.set_device(device)
         self.depth_model = self.init_depth_model(fmde_path)
@@ -320,7 +321,14 @@ class DepthCompletion(torch.nn.Module):
         # Use `vipe_ext` to find the K nearest neighbors.
         import vipe_ext as _C
 
-        _, inds = _C.utils_ext.nearest_neighbours(y, x, K)
+        if y.device.type == "cpu":
+            index_chunks = [
+                _C.utils_ext.nearest_neighbours(y[start : start + self.cpu_knn_chunk_size], x, K)[1]
+                for start in range(0, y.shape[0], self.cpu_knn_chunk_size)
+            ]
+            inds = torch.cat(index_chunks, dim=0)
+        else:
+            _, inds = _C.utils_ext.nearest_neighbours(y, x, K)
         knn_indices = inds.view(-1, K)  # [M, K]
 
         # Use `torch_cluster.knn` to find K nearest neighbors.

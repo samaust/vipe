@@ -438,7 +438,7 @@ def save_projection_video(
                 for instance_id, instance_phrase in frame_data.instance_phrases.items():
                     if instance_id <= 0:
                         continue
-                    text_img = image.text(instance_phrase)
+                    text_img = _text_image(instance_phrase)
                     inst_mask = inst_np == instance_id
                     try:
                         h_min, h_max = np.where(np.any(inst_mask, axis=1))[0][[0, -1]]
@@ -500,6 +500,6 @@ def save_projection_video(
             text_desc += f" | Traj {trajectory_length:.4f}"
             if len(frame_data.information) > 0:
                 text_desc += f" | {frame_data.information}"
-            img_text = image.text(text_desc)
+            img_text = _text_image(text_desc)
             img_final = image.place_image(img_text, img_final, 0, 0)
             vw.write(img_final)

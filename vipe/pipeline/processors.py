@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import gc
 import logging
 import os
 from typing import Any, Iterable, Iterator, cast
@@ -218,6 +219,7 @@ class AdaptiveDepthProcessor(StreamProcessor):
         view_idx: int = 0,
         model: str = "adaptive_unidepth-l_svda",
         share_depth_model: bool = False,
+        cpu_knn_chunk_size: int = 8192,
     ):
         super().__init__()
         self.slam_output = slam_output
@@ -230,19 +232,19 @@ class AdaptiveDepthProcessor(StreamProcessor):
         try:
             prefix, metric_model, video_model = model.split("_")
             assert video_model in ["svda", "vda"]
-            self.video_depth_model: VideoDepthAnythingDepthModel | None = VideoDepthAnythingDepthModel(
-                model="vits" if video_model == "svda" else "vitl"
-            )
 
         except ValueError:
             prefix, metric_model = model.split("_")
             video_model = None
-            self.video_depth_model = None
 
         assert prefix == "adaptive", "Model name should start with 'adaptive_'"
 
-        self.depth_model = make_depth_model(metric_model)
-        self.prompt_model = PriorDAModel()
+        self.metric_model_name = metric_model
+        self.video_model_name = video_model
+        self.cpu_knn_chunk_size = cpu_knn_chunk_size
+        self.video_depth_model: VideoDepthAnythingDepthModel | None = None
+        self.depth_model = None
+        self.prompt_model: PriorDAModel | None = None
         self.update_momentum = 0.99
 
     def __call__(self, frame_idx: int, frame: VideoFrame) -> VideoFrame:
@@ -259,121 +261,142 @@ class AdaptiveDepthProcessor(StreamProcessor):
         depth_exist = depth_crop.any(dim=(1, 3))
         return depth_exist.float().mean().item()
 
-    def _compute_video_da(self, frame_iterator: Iterator[VideoFrame]) -> tuple[torch.Tensor, list[VideoFrame]]:
-        frame_list: list[np.ndarray] = []
-        frame_data_list: list[VideoFrame] = []
-        for frame in frame_iterator:
-            frame_data_list.append(frame.cpu())
-            frame_list.append(frame.rgb.cpu().numpy())
+    def _make_video_depth_model(self) -> VideoDepthAnythingDepthModel:
+        return VideoDepthAnythingDepthModel(model="vits" if self.video_model_name == "svda" else "vitl")
 
-        video_depth_model = unpack_optional(self.video_depth_model)
-        video_depth_result: torch.Tensor = unpack_optional(
-            video_depth_model.estimate(DepthEstimationInput(video_frame_list=frame_list)).relative_inv_depth
-        )
-        return video_depth_result, frame_data_list
+    def _make_metric_depth_model(self):
+        return make_depth_model(self.metric_model_name)
+
+    def _make_prompt_depth_model(self) -> PriorDAModel:
+        return PriorDAModel(cpu_knn_chunk_size=self.cpu_knn_chunk_size)
+
+    def _compute_min_uv_score(self, frame: VideoFrame, slam_map) -> float:
+        min_uv_score = 1.0
+        for test_frame_idx in range(self.slam_output.trajectory.shape[0]):
+            if test_frame_idx % 10 != 0:
+                continue
+            depth_infilled = slam_map.project_map(
+                test_frame_idx,
+                0,
+                frame.size(),
+                unpack_optional(frame.intrinsics),
+                self.infill_target_pose[test_frame_idx],
+                unpack_optional(frame.camera_type),
+                infill=False,
+            )
+            min_uv_score = min(min_uv_score, self._compute_uv_score(depth_infilled))
+        return min_uv_score
+
+    def _compute_video_da(self, frame_data_list: list[VideoFrame]) -> torch.Tensor | None:
+        if self.video_model_name is None:
+            return None
+
+        self.video_depth_model = self._make_video_depth_model()
+        frame_list = [frame.rgb.cpu().numpy() for frame in frame_data_list]
+        try:
+            return unpack_optional(
+                self.video_depth_model.estimate(
+                    DepthEstimationInput(video_frame_list=frame_list)
+                ).relative_inv_depth
+            )
+        finally:
+            self.video_depth_model = None
+            del frame_list
+            gc.collect()
 
     def update_iterator(self, previous_iterator: Iterator[VideoFrame], pass_idx: int) -> Iterator[VideoFrame]:
-        # Determine the percentage score of the SLAM map.
-
         self.cache_scale_bias: tuple[torch.Tensor, torch.Tensor] | None = None
-        min_uv_score: float = 1.0
         slam_map = unpack_optional(self.slam_output.slam_map)
-        data_iterator: Iterable[VideoFrame]
+        frame_data_list = [frame.cpu() for frame in previous_iterator]
+        if not frame_data_list:
+            return
 
-        if self.video_depth_model is not None:
-            video_depth_result, data_iterator = self._compute_video_da(previous_iterator)
+        first_frame = frame_data_list[0].to(get_device())
+        min_uv_score = self._compute_min_uv_score(first_frame, slam_map)
+        logger.info(f"Minimum UV score: {min_uv_score:.4f}")
+
+        video_depth_result = self._compute_video_da(frame_data_list)
+        if min_uv_score < 0.3:
+            self.depth_model = self._make_metric_depth_model()
         else:
-            video_depth_result = None
-            data_iterator = previous_iterator
+            self.prompt_model = self._make_prompt_depth_model()
 
-        for frame_idx, frame in pbar(enumerate(data_iterator), desc="Aligning depth"):
-            # Convert back to GPU if not already.
-            frame = frame.to(get_device())
+        try:
+            for frame_idx, frame in pbar(enumerate(frame_data_list), desc="Aligning depth"):
+                # Convert back to the configured device if not already.
+                frame = frame.to(get_device())
 
-            # Compute the minimum UV score only once at the 0-th frame.
-            if frame_idx == 0:
-                for test_frame_idx in range(self.slam_output.trajectory.shape[0]):
-                    if test_frame_idx % 10 != 0:
-                        continue
-                    depth_infilled = slam_map.project_map(
-                        test_frame_idx,
+                if min_uv_score < 0.3:
+                    prompt_result = unpack_optional(self.depth_model).estimate(
+                        DepthEstimationInput(
+                            rgb=frame.rgb.float().to(get_device()),
+                            intrinsics=frame.intrinsics,
+                            camera_type=frame.camera_type,
+                        )
+                    ).metric_depth
+                    frame.information = f"uv={min_uv_score:.2f}(Metric)"
+                else:
+                    depth_map = slam_map.project_map(
+                        frame_idx,
                         0,
                         frame.size(),
                         unpack_optional(frame.intrinsics),
-                        self.infill_target_pose[test_frame_idx],
+                        self.infill_target_pose[frame_idx],
                         unpack_optional(frame.camera_type),
                         infill=False,
                     )
-                    uv_score = self._compute_uv_score(depth_infilled)
-                    if uv_score < min_uv_score:
-                        min_uv_score = uv_score
+                    if frame.mask is not None:
+                        depth_map = depth_map * frame.mask.float()
+                    prompt_result = unpack_optional(self.prompt_model).estimate(
+                        DepthEstimationInput(
+                            rgb=frame.rgb.float().to(get_device()),
+                            prompt_metric_depth=depth_map,
+                        )
+                    ).metric_depth
+                    frame.information = f"uv={min_uv_score:.2f}(SLAM)"
 
-                logger.info(f"Minimum UV score: {min_uv_score:.4f}")
+                if video_depth_result is not None:
+                    video_depth_inv_depth = video_depth_result[frame_idx]
 
-            if min_uv_score < 0.3:
-                prompt_result = self.depth_model.estimate(
-                    DepthEstimationInput(
-                        rgb=frame.rgb.float().to(get_device()),
-                        intrinsics=frame.intrinsics,
-                        camera_type=frame.camera_type,
-                    )
-                ).metric_depth
-                frame.information = f"uv={min_uv_score:.2f}(Metric)"
-            else:
-                depth_map = slam_map.project_map(
-                    frame_idx,
-                    0,
-                    frame.size(),
-                    unpack_optional(frame.intrinsics),
-                    self.infill_target_pose[frame_idx],
-                    unpack_optional(frame.camera_type),
-                    infill=False,
-                )
-                if frame.mask is not None:
-                    depth_map = depth_map * frame.mask.float()
-                prompt_result = self.prompt_model.estimate(
-                    DepthEstimationInput(
-                        rgb=frame.rgb.float().to(get_device()),
-                        prompt_metric_depth=depth_map,
-                    )
-                ).metric_depth
-                frame.information = f"uv={min_uv_score:.2f}(SLAM)"
+                    align_mask = video_depth_inv_depth > 1e-3
+                    if frame.mask is not None:
+                        align_mask = align_mask & frame.mask & (~frame.sky_mask)
 
-            if video_depth_result is not None:
-                video_depth_inv_depth = video_depth_result[frame_idx]
+                    try:
+                        _, scale_tensor, bias_tensor = align_inv_depth_to_depth(
+                            unpack_optional(video_depth_inv_depth),
+                            prompt_result,
+                            align_mask,
+                        )
+                    except RuntimeError:
+                        if self.cache_scale_bias is None:
+                            raise
+                        scale_tensor, bias_tensor = self.cache_scale_bias
 
-                align_mask = video_depth_inv_depth > 1e-3
-                if frame.mask is not None:
-                    align_mask = align_mask & frame.mask & (~frame.sky_mask)
-
-                try:
-                    _, scale_tensor, bias_tensor = align_inv_depth_to_depth(
-                        unpack_optional(video_depth_inv_depth),
-                        prompt_result,
-                        align_mask,
-                    )
-                except RuntimeError:
+                    # Momentum update.
                     if self.cache_scale_bias is None:
-                        raise
-                    scale_tensor, bias_tensor = self.cache_scale_bias
-
-                # momentum update
-                if self.cache_scale_bias is None:
+                        self.cache_scale_bias = (scale_tensor, bias_tensor)
+                    scale_tensor = self.cache_scale_bias[0] * self.update_momentum + scale_tensor * (
+                        1 - self.update_momentum
+                    )
+                    bias_tensor = self.cache_scale_bias[1] * self.update_momentum + bias_tensor * (
+                        1 - self.update_momentum
+                    )
                     self.cache_scale_bias = (scale_tensor, bias_tensor)
-                scale_tensor = self.cache_scale_bias[0] * self.update_momentum + scale_tensor * (
-                    1 - self.update_momentum
-                )
-                bias_tensor = self.cache_scale_bias[1] * self.update_momentum + bias_tensor * (1 - self.update_momentum)
-                self.cache_scale_bias = (scale_tensor, bias_tensor)
 
-                video_inv_depth = video_depth_inv_depth * scale_tensor + bias_tensor
-                video_inv_depth[video_inv_depth < 1e-3] = 1e-3
-                frame.metric_depth = video_inv_depth.reciprocal()
+                    video_inv_depth = video_depth_inv_depth * scale_tensor + bias_tensor
+                    video_inv_depth[video_inv_depth < 1e-3] = 1e-3
+                    frame.metric_depth = video_inv_depth.reciprocal()
 
-            else:
-                frame.metric_depth = prompt_result
+                else:
+                    frame.metric_depth = prompt_result
 
-            yield frame
+                yield frame
+        finally:
+            self.depth_model = None
+            self.prompt_model = None
+            video_depth_result = None
+            gc.collect()
 
 
 class MultiviewDepthProcessor(StreamProcessor):

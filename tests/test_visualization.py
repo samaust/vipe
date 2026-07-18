@@ -1,10 +1,12 @@
 import numpy as np
+import pytest
 
 from vipe.utils.visualization import _text_image
 
 
-def test_text_image_uses_embedded_font() -> None:
-    rendered = _text_image("N/A")
+@pytest.mark.parametrize("text", ["N/A", "animal", "rgb + instance"])
+def test_text_image_uses_embedded_font(text: str) -> None:
+    rendered = _text_image(text)
 
     assert rendered.dtype == np.uint8
     assert rendered.ndim == 3

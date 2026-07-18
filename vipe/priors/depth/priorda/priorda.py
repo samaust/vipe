@@ -29,6 +29,7 @@ class PriorDepthAnything(nn.Module):
         frozen_model_size=None,
         conditioned_model_size=None,
         coarse_only=False,
+        cpu_knn_chunk_size: int = 8192,
     ):
         super(PriorDepthAnything, self).__init__()
 
@@ -54,7 +55,12 @@ class PriorDepthAnything(nn.Module):
             fmde_path = os.path.join(fmde_dir, fmde_name)
 
         # Initialize Frozon-MDE.
-        self.completion = DepthCompletion.build(args=self.args, fmde_path=fmde_path, device=device)
+        self.completion = DepthCompletion.build(
+            args=self.args,
+            fmde_path=fmde_path,
+            device=device,
+            cpu_knn_chunk_size=cpu_knn_chunk_size,
+        )
 
         ## Conditioned MDE loading.
         if not coarse_only:
