@@ -39,6 +39,7 @@ from vipe.streams.base import (
 )
 from vipe.utils import io
 from vipe.utils.geometry import project_points_to_panorama, se3_to_so3, so3_to_se3
+from vipe.utils.device import get_device
 from vipe.utils.visualization import save_projection_video
 
 from . import AnnotationPipelineOutput, Pipeline
@@ -95,14 +96,14 @@ class MergedPanoramaVideoStream(VideoStream):
         for frame_idx, (pano_frame_data, *projected_frame_data) in enumerate(
             zip(self.pano_stream, *self.projected_streams)
         ):
-            pano_frame_data.intrinsics = torch.zeros(4).float().cuda()
+            pano_frame_data.intrinsics = torch.zeros(4, device=get_device()).float()
             pano_frame_data.pose = self.slam_output.trajectory[frame_idx]
             pano_frame_data.camera_type = CameraType.PANORAMA
 
             if self.pano_depth_model is not None:
                 height_crop = int(pano_frame_data.size()[0] * (1 - self.DEPTH_KEEP_RATIO) / 2)
                 depth_slice = slice(height_crop, -height_crop if height_crop > 0 else None)
-                full_distance = torch.zeros(pano_frame_data.size()).cuda()
+                full_distance = torch.zeros(pano_frame_data.size(), device=get_device())
                 if self.pano_depth_method == "dap":
                     distance = self.pano_depth_model.estimate(
                         DepthEstimationInput(
@@ -125,7 +126,7 @@ class MergedPanoramaVideoStream(VideoStream):
                 uvd = project_points_to_panorama(xyz, return_depth=True)
                 uvd[:, 0] *= pano_frame_data.size()[1]
                 uvd[:, 1] *= pano_frame_data.size()[0]
-                target_depth = torch.zeros(pano_frame_data.size(), device="cuda")
+                target_depth = torch.zeros(pano_frame_data.size(), device=get_device())
 
                 # Filter out-of-bounds indices to prevent CUDA assertion errors
                 height, width = pano_frame_data.size()
@@ -216,12 +217,14 @@ class PanoramaAnnotationPipeline(Pipeline):
                 [virtual_focal, virtual_focal, virtual_width // 2, virtual_height // 2],
             )
             .float()
-            .cuda()
+            .to(get_device())
         )
         self.virtual_size = (virtual_height, virtual_width)
 
         self.virtual_cfg = virtual
         self.slam_cfg = slam
+        if get_device().type == "cpu":
+            self.slam_cfg.ba.fused = False
         self.out_cfg = output
         self.post_cfg = post
         self.out_path = Path(self.out_cfg.path)
@@ -277,7 +280,7 @@ class PanoramaAnnotationPipeline(Pipeline):
             slam_streams.append(ProcessedVideoStream(cached_video_stream, projectors).cache(online=True))
         rig_se3 = lt.stack(rig_transforms, dim=0)
 
-        slam_pipeline = SLAMSystem(device=torch.device("cuda"), config=self.slam_cfg, model_cache=self.model_cache)
+        slam_pipeline = SLAMSystem(device=get_device(), config=self.slam_cfg, model_cache=self.model_cache)
         slam_output = slam_pipeline.run(slam_streams, rig=rig_se3)
 
         # For visualization, we append the visualization of the full panorama.

@@ -1089,7 +1089,8 @@ class RAFTDepthNormalDPT5(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def get_bins(self, bins_num):
-        depth_bins_vec = torch.linspace(math.log(self.min_val), math.log(self.max_val), bins_num, device="cuda")
+        device = next(self.parameters()).device
+        depth_bins_vec = torch.linspace(math.log(self.min_val), math.log(self.max_val), bins_num, device=device)
         depth_bins_vec = torch.exp(depth_bins_vec)
         return depth_bins_vec
 
@@ -1133,7 +1134,9 @@ class RAFTDepthNormalDPT5(nn.Module):
         return norm_normalize(torch.cat([normal_out, confidence], dim=1))
         # return norm_normalize(torch.cat([normal_out, confidence], dim=1).float())
 
-    def create_mesh_grid(self, height, width, batch, device="cuda", set_buffer=True):
+    def create_mesh_grid(self, height, width, batch, device=None, set_buffer=True):
+        if device is None:
+            device = next(self.parameters()).device
         y, x = torch.meshgrid(
             [
                 torch.arange(0, height, dtype=torch.float32, device=device),

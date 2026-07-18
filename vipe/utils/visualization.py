@@ -289,6 +289,17 @@ def image_above_text(img: np.ndarray, text: str = "<TEXT>") -> Image.Image:
     return new_image
 
 
+def _text_image(text: str) -> np.ndarray:
+    """Render a small label without depending on system font files."""
+    font = ImageFont.load_default()
+    probe = Image.new("RGB", (1, 1), color=(255, 255, 255))
+    draw = ImageDraw.Draw(probe)
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    text_image = Image.new("RGB", (right - left, bottom - top), color=(255, 255, 255))
+    ImageDraw.Draw(text_image).text((-left, -top), text, font=font, fill=(0, 0, 0))
+    return np.asarray(text_image)
+
+
 def save_projection_video(
     video_path: Path,
     video_stream: VideoStream,
@@ -303,7 +314,7 @@ def save_projection_video(
     img_w //= subsample_factor
 
     na_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)
-    text_img = image.text("N/A")
+    text_img = _text_image("N/A")
     na_img = image.place_image(
         text_img,
         na_img,

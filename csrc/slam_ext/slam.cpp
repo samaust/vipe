@@ -21,6 +21,39 @@ std::vector<torch::Tensor> projmap_cuda(torch::Tensor poses, torch::Tensor disps
 
 torch::Tensor iproj_cuda(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics);
 
+torch::Tensor depth_filter_cpu(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics, torch::Tensor ix,
+                               torch::Tensor thresh);
+torch::Tensor frame_distance_cpu(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics, torch::Tensor pi,
+                                 torch::Tensor pj, torch::Tensor qi, torch::Tensor qj, torch::Tensor di,
+                                 const float beta);
+std::vector<torch::Tensor> projmap_cpu(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics,
+                                      torch::Tensor ii, torch::Tensor jj);
+torch::Tensor iproj_cpu(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics);
+
+torch::Tensor frame_distance(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics, torch::Tensor pi,
+                             torch::Tensor pj, torch::Tensor qi, torch::Tensor qj, torch::Tensor di,
+                             const float beta) {
+    return poses.device().is_cpu() ? frame_distance_cpu(poses, disps, intrinsics, pi, pj, qi, qj, di, beta)
+                                   : frame_distance_cuda(poses, disps, intrinsics, pi, pj, qi, qj, di, beta);
+}
+
+std::vector<torch::Tensor> projmap(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics,
+                                   torch::Tensor ii, torch::Tensor jj) {
+    return poses.device().is_cpu() ? projmap_cpu(poses, disps, intrinsics, ii, jj)
+                                   : projmap_cuda(poses, disps, intrinsics, ii, jj);
+}
+
+torch::Tensor depth_filter(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics, torch::Tensor ix,
+                           torch::Tensor thresh) {
+    return poses.device().is_cpu() ? depth_filter_cpu(poses, disps, intrinsics, ix, thresh)
+                                   : depth_filter_cuda(poses, disps, intrinsics, ix, thresh);
+}
+
+torch::Tensor iproj(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics) {
+    return poses.device().is_cpu() ? iproj_cpu(poses, disps, intrinsics)
+                                   : iproj_cuda(poses, disps, intrinsics);
+}
+
 std::vector<torch::Tensor> ba_cuda(torch::Tensor poses, torch::Tensor disps, torch::Tensor intrinsics,
                                    torch::Tensor disps_sens, torch::Tensor targets, torch::Tensor weights,
                                    torch::Tensor eta, torch::Tensor ii, torch::Tensor jj, const int t0, const int t1,
@@ -50,8 +83,8 @@ void pybind_slam_ext(py::module &m) {
           py::arg("t1"), py::arg("iterations"), py::arg("lm"), py::arg("ep"), py::arg("motion_only"),
           py::arg("alpha"), py::arg("optimize_intrinsics"), py::arg("intrinsics_lm"), py::arg("intrinsics_ep"),
           py::arg("intrinsics_scale"), py::arg("compute_energy") = false, py::arg("flow_weight") = 0.001f);
-    m.def("frame_distance", &slam_ext::frame_distance_cuda, "frame_distance");
-    m.def("projmap", &slam_ext::projmap_cuda, "projmap");
-    m.def("depth_filter", &slam_ext::depth_filter_cuda, "depth_filter");
-    m.def("iproj", &slam_ext::iproj_cuda, "back projection");
+    m.def("frame_distance", &slam_ext::frame_distance, "frame_distance");
+    m.def("projmap", &slam_ext::projmap, "projmap");
+    m.def("depth_filter", &slam_ext::depth_filter, "depth_filter");
+    m.def("iproj", &slam_ext::iproj, "back projection");
 }

@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
+from vipe.utils.device import get_device
 
 from .dav2 import build_backbone
 from .depth_completion import DepthCompletion
@@ -21,7 +22,7 @@ from .utils import Arguments, depth2disparity, disparity2depth
 class PriorDepthAnything(nn.Module):
     def __init__(
         self,
-        device="cuda:0",
+        device=None,
         fmde_dir=None,
         cmde_dir=None,
         ckpt_dir=None,
@@ -32,7 +33,7 @@ class PriorDepthAnything(nn.Module):
         super(PriorDepthAnything, self).__init__()
 
         self.args = Arguments()
-        self.device = device
+        self.device = torch.device(device) if device is not None else get_device()
         """ 
         For inference stability, we set the output coarse/fine globally. 
         TODO : You can easily modify the code to specify the model to output coarse/fine depth sample-wisely.
@@ -75,7 +76,7 @@ class PriorDepthAnything(nn.Module):
 
         self.sampler = SparseSampler(device=device)
 
-    def load_checkpoints(self, model, ckpt_dir, device="cuda:0"):
+    def load_checkpoints(self, model, ckpt_dir, device=None):
         ckpt_name = f"prior_depth_anything_{self.args.conditioned_model_size}.pth"
         if ckpt_dir is None:
             ckpt_path = hf_hub_download(repo_id=self.args.repo_name, filename=ckpt_name)
@@ -90,7 +91,7 @@ class PriorDepthAnything(nn.Module):
             new_state_dict[new_key] = value
 
         model.load_state_dict(new_state_dict)
-        model = model.to(device)
+        model = model.to(self.device if device is None else device)
         return model
 
     def forward(
@@ -141,11 +142,11 @@ class PriorDepthAnything(nn.Module):
 
         # heit = sparse_depths.shape[-2] // 14 * 14
         heit = 518
-        if hasattr(self, "timer"):
+        if hasattr(self, "timer") and self.device.type == "cuda":
             torch.cuda.synchronize()
             t0 = time.time()
         metric_disparities = self.model(images, heit, condition=condition, device=self.device)
-        if hasattr(self, "timer"):
+        if hasattr(self, "timer") and self.device.type == "cuda":
             torch.cuda.synchronize()
             t1 = time.time()
             self.timer.append(t1 - t0)

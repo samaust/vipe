@@ -43,6 +43,7 @@ Top-level ViPE runtime configuration.
 
 | Field | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
+| `device` | `cpu` \| `cuda` | required | choices `cpu` \| `cuda` | Torch device used for model inference and SLAM. |
 | `streams` | RawMP4StreamListConfig \| FrameDirStreamListConfig | required | - | Input stream list that supplies videos or frame directories to process. |
 | `pipeline` | DefaultPipelineConfig \| PanoramaPipelineConfig | required | - | Annotation pipeline and all pipeline-specific runtime options. |
 

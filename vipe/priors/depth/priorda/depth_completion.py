@@ -9,6 +9,8 @@ from typing import Dict, Tuple
 
 import torch
 
+from vipe.utils.device import get_device
+
 from .dav2 import build_backbone
 from .utils import depth2disparity
 
@@ -32,10 +34,7 @@ class DepthCompletion(torch.nn.Module):
             self.device = device
             return
 
-        if torch.cuda.is_available():
-            self.device = torch.device("cuda:0")
-        else:
-            self.device = torch.device("cpu")
+        self.device = get_device()
 
     def unify_format(
         self,

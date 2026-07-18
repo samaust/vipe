@@ -32,6 +32,7 @@ from vipe.streams.base import (
 )
 from vipe.utils import io
 from vipe.utils.cameras import CameraType
+from vipe.utils.device import get_device
 from vipe.utils.visualization import save_projection_video
 
 from . import AnnotationPipelineOutput, Pipeline
@@ -50,6 +51,8 @@ class DefaultAnnotationPipeline(Pipeline):
         super().__init__()
         self.init_cfg = init
         self.slam_cfg = slam
+        if get_device().type == "cpu":
+            self.slam_cfg.ba.fused = False
         self.post_cfg = post
         self.out_cfg = output
         self.out_path = Path(self.out_cfg.path)
@@ -128,7 +131,7 @@ class DefaultAnnotationPipeline(Pipeline):
             for video_stream in video_streams
         ]
 
-        slam_pipeline = SLAMSystem(device=torch.device("cuda"), config=self.slam_cfg, model_cache=self.model_cache)
+        slam_pipeline = SLAMSystem(device=get_device(), config=self.slam_cfg, model_cache=self.model_cache)
         slam_output = slam_pipeline.run(slam_streams, rig=slam_rig, camera_type=self.camera_type)
 
         if self.return_payload:

@@ -153,7 +153,7 @@ class SLAMMap:
         all_xyz = all_xyz @ target_pose_mat[:3, :3].T + target_pose_mat[:3, 3]
 
         xyz_h = torch.cat(
-            [all_xyz, torch.ones(all_xyz.shape[0], device="cuda").unsqueeze(-1)],
+            [all_xyz, torch.ones(all_xyz.shape[0], device=all_xyz.device).unsqueeze(-1)],
             dim=-1,
         )
         disp = 1.0 / all_xyz[:, 2]
@@ -166,14 +166,14 @@ class SLAMMap:
         uu, vv, depth = uu[in_mask], vv[in_mask], disp[in_mask].reciprocal()
 
         if not infill:
-            target_depth = torch.zeros(target_size, device="cuda")
+            target_depth = torch.zeros(target_size, device=depth.device)
             target_depth[vv.floor().long(), uu.floor().long()] = depth
         else:
             tree = torch.stack((uu, vv), dim=-1)
             query = torch.stack(
                 torch.meshgrid(
-                    torch.arange(target_size[1], device="cuda").float() + 0.5,
-                    torch.arange(target_size[0], device="cuda").float() + 0.5,
+                    torch.arange(target_size[1], device=depth.device).float() + 0.5,
+                    torch.arange(target_size[0], device=depth.device).float() + 0.5,
                     indexing="xy",
                 ),
                 dim=-1,

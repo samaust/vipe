@@ -134,6 +134,10 @@ class AltCorrBlock:
 
         B, N, C, H, W = fmaps.shape
         fmaps = fmaps.view(B * N, C, H, W) / 4.0
+        if fmaps.device.type == "cpu":
+            # The native CPU correlation implementation accumulates in float32.
+            # Keep CUDA's compact/autocast representation unchanged.
+            fmaps = fmaps.float()
 
         self.pyramid = []
         for i in range(self.num_levels):
@@ -570,7 +574,10 @@ class DroidNet(nn.Module):
             )
 
         state_dict = OrderedDict(
-            [(k.replace("module.", ""), v) for (k, v) in torch.load(ckpt_path, weights_only=True).items()]
+            [
+                (k.replace("module.", ""), v)
+                for (k, v) in torch.load(ckpt_path, map_location="cpu", weights_only=True).items()
+            ]
         )
 
         state_dict["update.weight.2.weight"] = state_dict["update.weight.2.weight"][:2]

@@ -9,6 +9,10 @@ def run(args: DictConfig) -> None:
 
     typed_args = validate_typed_config(args)
 
+    from vipe.utils.device import configure_device
+
+    configure_device(typed_args.device)
+
     # Gather all video streams
     stream_list = StreamList.make(typed_args.streams)
 

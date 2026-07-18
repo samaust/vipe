@@ -29,6 +29,7 @@ import torch.nn.functional as F
 
 from vipe.utils.cameras import CameraType
 from vipe.utils.misc import unpack_optional
+from vipe.utils.device import get_device
 
 from ..base import DepthEstimationInput, DepthEstimationModel, DepthEstimationResult, DepthType
 from .model import make_dap_model
@@ -91,7 +92,7 @@ class DAPModel(DepthEstimationModel):
         if unexpected:
             logger.warning("DAP checkpoint had %d unexpected parameters/buffers.", len(unexpected))
 
-        self.model = model.cuda().eval()
+        self.model = model.to(get_device()).eval()
         self.input_size = input_size
         self._patch_size = int(getattr(self.model.core, "patch_size", 14))
 

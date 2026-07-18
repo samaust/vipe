@@ -51,6 +51,12 @@ def test_parse_typed_config_pipeline_presets(tmp_path: Path, pipeline: str, pipe
     assert isinstance(config.pipeline.to_dictconfig(), DictConfig)
 
 
+def test_parse_typed_config_accepts_cpu_device(tmp_path: Path) -> None:
+    config = parse_typed_config("default", [*_base_overrides(tmp_path), "device=cpu"])
+
+    assert config.device == "cpu"
+
+
 def test_parse_typed_config_frame_dir_stream(tmp_path: Path) -> None:
     frame_dir = tmp_path / "frames"
     frame_dir.mkdir()

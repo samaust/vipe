@@ -20,6 +20,8 @@
 
 import torch
 
+from vipe.utils.device import get_device
+
 from ..networks.droid_net import CorrBlock, DroidNet
 from .sparse_tracks import SparseTracks
 
@@ -36,11 +38,11 @@ class MotionFilter:
         droid_net: DroidNet,
         sparse_tracks: SparseTracks,
         thresh: float,
-        device: torch.device = torch.device("cuda"),
+        device: torch.device | None = None,
     ):
         self.net = droid_net
         self.thresh = thresh
-        self.device = device
+        self.device = get_device() if device is None else device
         self.sparse_tracks = sparse_tracks
         self.initialized = False
 

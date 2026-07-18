@@ -22,6 +22,7 @@ except ModuleNotFoundError:
 
 from vipe.utils.cameras import CameraType
 from vipe.utils.misc import unpack_optional
+from vipe.utils.device import get_device
 
 from .base import DepthEstimationInput, DepthEstimationModel, DepthEstimationResult, DepthType
 
@@ -43,7 +44,7 @@ class MogeModel(DepthEstimationModel):
                 "moge is not found in the environment. You can install it via pip install `git+https://github.com/microsoft/MoGe.git`"
             )
         self.model = MoGeModel.from_pretrained("Ruicheng/moge-vitl")
-        self.model = self.model.cuda().eval()
+        self.model = self.model.to(get_device()).eval()
 
     @property
     def depth_type(self) -> DepthType:

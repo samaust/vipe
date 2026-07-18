@@ -21,13 +21,25 @@ std::vector<torch::Tensor> altcorr_cuda_backward(torch::Tensor fmap1, torch::Ten
 std::vector<torch::Tensor> altcorr_index_cuda_forward(torch::Tensor fmap1, std::vector<torch::Tensor> fmap2_pyramid,
                                                       torch::Tensor coords, torch::Tensor ii, torch::Tensor jj,
                                                       int radius);
+std::vector<torch::Tensor> corr_index_cpu_forward(torch::Tensor volume, torch::Tensor coords, int radius);
+std::vector<torch::Tensor> corr_index_cpu_backward(torch::Tensor volume, torch::Tensor coords,
+                                                   torch::Tensor corr_grad, int radius);
+std::vector<torch::Tensor> altcorr_cpu_forward(torch::Tensor fmap1, torch::Tensor fmap2, torch::Tensor coords,
+                                              int radius);
+std::vector<torch::Tensor> altcorr_cpu_backward(torch::Tensor fmap1, torch::Tensor fmap2, torch::Tensor coords,
+                                               torch::Tensor corr_grad, int radius);
+std::vector<torch::Tensor> altcorr_index_cpu_forward(torch::Tensor fmap1,
+                                                     std::vector<torch::Tensor> fmap2_pyramid,
+                                                     torch::Tensor coords, torch::Tensor ii, torch::Tensor jj,
+                                                     int radius);
 
 // c++ python binding
 std::vector<torch::Tensor> corr_index_forward(torch::Tensor volume, torch::Tensor coords, int radius) {
     CHECK_INPUT(volume);
     CHECK_INPUT(coords);
 
-    return corr_index_cuda_forward(volume, coords, radius);
+    return volume.device().is_cpu() ? corr_index_cpu_forward(volume, coords, radius)
+                                    : corr_index_cuda_forward(volume, coords, radius);
 }
 
 std::vector<torch::Tensor> corr_index_backward(torch::Tensor volume, torch::Tensor coords, torch::Tensor corr_grad,
@@ -36,8 +48,9 @@ std::vector<torch::Tensor> corr_index_backward(torch::Tensor volume, torch::Tens
     CHECK_INPUT(coords);
     CHECK_INPUT(corr_grad);
 
-    auto volume_grad = corr_index_cuda_backward(volume, coords, corr_grad, radius);
-    return {volume_grad};
+    auto volume_grad = volume.device().is_cpu() ? corr_index_cpu_backward(volume, coords, corr_grad, radius)
+                                                : corr_index_cuda_backward(volume, coords, corr_grad, radius);
+    return volume_grad;
 }
 
 std::vector<torch::Tensor> altcorr_forward(torch::Tensor fmap1, torch::Tensor fmap2, torch::Tensor coords, int radius) {
@@ -45,7 +58,8 @@ std::vector<torch::Tensor> altcorr_forward(torch::Tensor fmap1, torch::Tensor fm
     CHECK_INPUT(fmap2);
     CHECK_INPUT(coords);
 
-    return altcorr_cuda_forward(fmap1, fmap2, coords, radius);
+    return fmap1.device().is_cpu() ? altcorr_cpu_forward(fmap1, fmap2, coords, radius)
+                                   : altcorr_cuda_forward(fmap1, fmap2, coords, radius);
 }
 
 std::vector<torch::Tensor> altcorr_index_forward(torch::Tensor fmap1, std::vector<torch::Tensor> fmap2_pyramid,
@@ -59,7 +73,8 @@ std::vector<torch::Tensor> altcorr_index_forward(torch::Tensor fmap1, std::vecto
         CHECK_INPUT(fmap2);
     }
 
-    return altcorr_index_cuda_forward(fmap1, fmap2_pyramid, coords, ii, jj, radius);
+    return fmap1.device().is_cpu() ? altcorr_index_cpu_forward(fmap1, fmap2_pyramid, coords, ii, jj, radius)
+                                   : altcorr_index_cuda_forward(fmap1, fmap2_pyramid, coords, ii, jj, radius);
 }
 
 std::vector<torch::Tensor> altcorr_backward(torch::Tensor fmap1, torch::Tensor fmap2, torch::Tensor coords,
@@ -69,7 +84,8 @@ std::vector<torch::Tensor> altcorr_backward(torch::Tensor fmap1, torch::Tensor f
     CHECK_INPUT(coords);
     CHECK_INPUT(corr_grad);
 
-    return altcorr_cuda_backward(fmap1, fmap2, coords, corr_grad, radius);
+    return fmap1.device().is_cpu() ? altcorr_cpu_backward(fmap1, fmap2, coords, corr_grad, radius)
+                                   : altcorr_cuda_backward(fmap1, fmap2, coords, corr_grad, radius);
 }
 
 void pybind_droid_net_ext(py::module& m) {

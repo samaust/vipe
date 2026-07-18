@@ -23,6 +23,7 @@ from vipe.streams.base import ProcessedVideoStream
 from vipe.streams.frame_dir_stream import FrameDirStream
 from vipe.streams.raw_mp4_stream import RawMp4Stream
 from vipe.utils.logging import configure_logging
+from vipe.utils.device import configure_device
 from vipe.utils.viser import run_viser
 
 
@@ -71,6 +72,7 @@ def infer(video: Path | None, image_dir: Path | None, output: Path, pipeline: st
         input_desc = f"video {video}"
 
     args = parse_typed_config("default", hydra_args=overrides)
+    configure_device(args.device)
 
     logger.info(f"Processing {input_desc}...")
     vipe_pipeline = make_pipeline(args.pipeline)

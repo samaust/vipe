@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import torch
 
 from vipe.utils.misc import unpack_optional
+from vipe.utils.device import get_device
 
 from ..base import DepthEstimationInput, DepthEstimationModel, DepthEstimationResult, DepthType
 from .dpt import DepthAnythingV2
@@ -75,7 +76,7 @@ class DepthAnythingDepthModel(DepthEstimationModel):
 
         self.model = DepthAnythingV2(**self.model_config, max_depth=self.max_depth)
         self.model.load_state_dict(torch.hub.load_state_dict_from_url(self.ckpt_url, map_location="cpu"))
-        self.model.cuda().eval()
+        self.model.to(get_device()).eval()
 
     @property
     def depth_type(self) -> DepthType:

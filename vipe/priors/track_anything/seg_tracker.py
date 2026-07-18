@@ -52,7 +52,7 @@ class SegTracker:
             mask: CUDA tensor (h,w)
         """
         if not isinstance(mask, torch.Tensor):
-            raise TypeError("GPU Track Anything path requires reference mask as torch.Tensor")
+            raise TypeError("Track Anything requires reference mask as torch.Tensor")
         self.reference_objs_list.append(torch.unique(mask).detach())
         self.curr_idx = self.get_obj_num()
         self.tracker.add_reference_frame(frame, mask, self.curr_idx, frame_step)
@@ -171,7 +171,7 @@ class SegTracker:
         seg_phrase = {}
 
         if not isinstance(origin_frame, torch.Tensor):
-            raise TypeError("GPU Track Anything path requires origin_frame as torch.Tensor")
+            raise TypeError("Track Anything requires origin_frame as torch.Tensor")
 
         # get annotated_frame and boxes
         annotated_frame_shape, boxes, phrases = self.detector.run_grounding_tensor(

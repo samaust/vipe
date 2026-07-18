@@ -24,7 +24,7 @@
 #define CHECK_CUDA(x) TORCH_CHECK(x.is_cuda(), #x " must be a CUDA tensor")
 #define CHECK_IS_FLOAT(x) TORCH_CHECK(x.scalar_type() == at::ScalarType::Float, #x " must be a float tensor")
 
-std::vector<torch::Tensor> nearestNeighbours(torch::Tensor query, torch::Tensor tree, int knn) {
+std::vector<torch::Tensor> nearestNeighboursCuda(torch::Tensor query, torch::Tensor tree, int knn) {
     CHECK_CUDA(query);
     CHECK_IS_FLOAT(query);
     CHECK_CUDA(tree);

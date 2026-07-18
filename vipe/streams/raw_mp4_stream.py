@@ -19,6 +19,7 @@ import cv2
 import torch
 
 from vipe.streams.base import ProcessedVideoStream, StreamList, VideoFrame, VideoStream
+from vipe.utils.device import get_device
 
 
 class RawMp4Stream(VideoStream):
@@ -87,7 +88,7 @@ class RawMp4Stream(VideoStream):
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame_rgb = torch.as_tensor(frame).float() / 255.0
-        frame_rgb = frame_rgb.cuda()
+        frame_rgb = frame_rgb.to(get_device())
 
         return VideoFrame(raw_frame_idx=self.current_frame_idx, rgb=frame_rgb)
 

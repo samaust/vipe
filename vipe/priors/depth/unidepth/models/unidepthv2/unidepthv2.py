@@ -347,8 +347,7 @@ class UniDepthV2(
         return inputs, outputs
 
     def load_pretrained(self, model_file):
-        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        dict_model = torch.load(model_file, map_location=device, weights_only=False)
+        dict_model = torch.load(model_file, map_location="cpu", weights_only=False)
         if "model" in dict_model:
             dict_model = dict_model["model"]
         dict_model = {k.replace("module.", ""): v for k, v in dict_model.items()}

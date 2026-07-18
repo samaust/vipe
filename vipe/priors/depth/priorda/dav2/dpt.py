@@ -3,6 +3,7 @@
 # Licensed under the Apache-2.0 License. See THIRD_PARTY_LICENSES.md for details.
 
 import torch
+from vipe.utils.device import get_device
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.transforms import Compose
@@ -199,7 +200,8 @@ class DepthAnythingV2(nn.Module):
             encoder_cond_dim=encoder_cond_dim,
         )
 
-    def forward(self, image, input_size=518, condition=None, device="cuda:0"):
+    def forward(self, image, input_size=518, condition=None, device=None):
+        device = get_device() if device is None else torch.device(device)
         x, (h, w) = self.raw2input(image, input_size, device)
 
         rh, rw = x.shape[-2:]
@@ -247,7 +249,9 @@ class DepthAnythingV2(nn.Module):
 
         return missing, unexpected
 
-    def raw2input(self, raw_image, input_size=518, device="cuda"):
+    def raw2input(self, raw_image, input_size=518, device=None):
+        if device is None:
+            device = get_device()
         assert isinstance(raw_image, torch.Tensor)
         assert raw_image.dtype == torch.uint8
         transform = Compose(

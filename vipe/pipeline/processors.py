@@ -33,6 +33,7 @@ from vipe.slam.interface import SLAMOutput
 from vipe.streams.base import CachedVideoStream, FrameAttribute, StreamProcessor, VideoFrame, VideoStream
 from vipe.utils.cameras import CameraType
 from vipe.utils.depth import get_camera_rays
+from vipe.utils.device import get_device
 from vipe.utils.geometry import project_points_to_panorama
 from vipe.utils.logging import pbar
 from vipe.utils.misc import unpack_optional
@@ -84,7 +85,7 @@ class GeoCalibIntrinsicsProcessor(IntrinsicEstimationProcessor):
         # GeoCalib is used purely for inference; when a cache is provided the
         # weights are loaded once and reused across streams instead of per video.
         def _build_geocalib():
-            return GeoCalib(weights=weights).cuda()
+            return GeoCalib(weights=weights).to(get_device())
 
         if model_cache is not None:
             model = model_cache.get(f"geocalib/{weights}", _build_geocalib)
@@ -287,7 +288,7 @@ class AdaptiveDepthProcessor(StreamProcessor):
 
         for frame_idx, frame in pbar(enumerate(data_iterator), desc="Aligning depth"):
             # Convert back to GPU if not already.
-            frame = frame.cuda()
+            frame = frame.to(get_device())
 
             # Compute the minimum UV score only once at the 0-th frame.
             if frame_idx == 0:
@@ -312,7 +313,9 @@ class AdaptiveDepthProcessor(StreamProcessor):
             if min_uv_score < 0.3:
                 prompt_result = self.depth_model.estimate(
                     DepthEstimationInput(
-                        rgb=frame.rgb.float().cuda(), intrinsics=frame.intrinsics, camera_type=frame.camera_type
+                        rgb=frame.rgb.float().to(get_device()),
+                        intrinsics=frame.intrinsics,
+                        camera_type=frame.camera_type,
                     )
                 ).metric_depth
                 frame.information = f"uv={min_uv_score:.2f}(Metric)"
@@ -330,7 +333,7 @@ class AdaptiveDepthProcessor(StreamProcessor):
                     depth_map = depth_map * frame.mask.float()
                 prompt_result = self.prompt_model.estimate(
                     DepthEstimationInput(
-                        rgb=frame.rgb.float().cuda(),
+                        rgb=frame.rgb.float().to(get_device()),
                         prompt_metric_depth=depth_map,
                     )
                 ).metric_depth
@@ -413,7 +416,7 @@ class MultiviewDepthProcessor(StreamProcessor):
 
             dav3_logger.level = 0  # Disable logging timing information
             self.dav3_api = DepthAnything3.from_pretrained("depth-anything/DA3-GIANT", model_name="da3-giant")
-            self.dav3_api = self.dav3_api.cuda().eval()
+            self.dav3_api = self.dav3_api.to(get_device()).eval()
 
     def update_attributes(self, previous_attributes: set[FrameAttribute]) -> set[FrameAttribute]:
         return previous_attributes | {FrameAttribute.METRIC_DEPTH}
@@ -478,7 +481,7 @@ class MultiviewDepthProcessor(StreamProcessor):
                     intrinsics=np.stack(sw_ints + kf_ints, axis=0),
                     process_res_method="lower_bound_resize",  # Keep aspect ratio
                 )
-                sw_depth = torch.from_numpy(dav3_inference_result.depth[: len(sw_images)]).float().cuda()
+                sw_depth = torch.from_numpy(dav3_inference_result.depth[: len(sw_images)]).float().to(get_device())
                 sw_depth = torch.nn.functional.interpolate(sw_depth[:, None], frame.size(), mode="bilinear")[:, 0]
 
                 n_frames_to_yield = (
@@ -488,7 +491,7 @@ class MultiviewDepthProcessor(StreamProcessor):
                 # Linearly interpolate the trailing depth with new depth
                 if trailing_depth is not None:
                     n_interp_frames = len(trailing_depth)
-                    alpha = torch.linspace(0, 1, n_interp_frames + 2)[1:-1].float().cuda()[:, None, None]
+                    alpha = torch.linspace(0, 1, n_interp_frames + 2, device=get_device())[1:-1].float()[:, None, None]
                     sw_depth[:n_interp_frames] = trailing_depth * (1 - alpha) + sw_depth[:n_interp_frames] * alpha
 
                 for sw_idx, frame in enumerate(current_sliding_window[:n_frames_to_yield]):
@@ -526,8 +529,8 @@ class EquirectProjectionProcessor(StreamProcessor):
 
     def __init__(self, rotation: SO3, frame_size: tuple[int, int], intrinsics: torch.Tensor) -> None:
         super().__init__()
-        self.rotation = rotation.cuda()
-        self.intrinsics = intrinsics.cuda()
+        self.rotation = rotation.to(get_device())
+        self.intrinsics = intrinsics.to(get_device())
         rays = get_camera_rays(frame_size[0], frame_size[1], self.intrinsics, normalize=True)
         rays = unpack_optional(self.rotation[None, None].act(rays))
         uv = project_points_to_panorama(rays, return_depth=False)
@@ -550,7 +553,9 @@ class EquirectProjectionProcessor(StreamProcessor):
         assert frame.metric_depth is None, "Metric depth is not supported for equirect projection"
 
         if (new_pose := frame.pose) is not None:
-            rel_transform = SE3.InitFromVec(torch.cat((torch.zeros(3).cuda(), self.rotation.data)))
+            rel_transform = SE3.InitFromVec(
+                torch.cat((torch.zeros(3, device=get_device()), self.rotation.data))
+            )
             new_pose = new_pose * rel_transform
 
         new_rgb = (

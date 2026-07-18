@@ -17,9 +17,16 @@
 
 #include <torch/extension.h>
 
-std::vector<torch::Tensor> nearestNeighbours(torch::Tensor query, torch::Tensor tree, int knn);
+std::vector<torch::Tensor> nearestNeighboursCuda(torch::Tensor query, torch::Tensor tree, int knn);
+std::vector<torch::Tensor> nearestNeighboursCpu(torch::Tensor query, torch::Tensor tree, int knn);
+
+std::vector<torch::Tensor> nearestNeighbours(torch::Tensor query, torch::Tensor tree, int knn) {
+    TORCH_CHECK(query.device() == tree.device(), "query and tree must be on the same device");
+    return query.device().is_cpu() ? nearestNeighboursCpu(query, tree, knn)
+                                   : nearestNeighboursCuda(query, tree, knn);
+}
 
 void pybind_utils_ext(py::module &m) {
-    m.def("nearest_neighbours", &nearestNeighbours, "KNN computation (CUDA) distance is squared L2.", py::arg("query"),
+    m.def("nearest_neighbours", &nearestNeighbours, "KNN computation; distance is squared L2.", py::arg("query"),
           py::arg("tree"), py::arg("knn"));
 }

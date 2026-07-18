@@ -16,7 +16,7 @@ from vipe.utils.cameras import CameraType
 
 def _require_cuda_ba_runtime() -> None:
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required for fused BA parity tests")
+        raise unittest.SkipTest("CUDA is required for fused BA parity tests")
     if not hasattr(slam_ext, "ba_extended"):
         raise RuntimeError("slam_ext.ba_extended is required for fused BA parity tests")
 

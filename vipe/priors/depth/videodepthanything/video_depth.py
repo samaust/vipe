@@ -17,6 +17,7 @@ import numpy as np
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import torch
+from vipe.utils.device import get_device
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.transforms import Compose
@@ -77,8 +78,10 @@ class VideoDepthAnything(nn.Module):
         return depth.squeeze(1).unflatten(0, (B, T))  # return shape [B, T, H, W]
 
     def infer_video_depth(
-        self, frame_list: list[np.ndarray], input_size: int = 518, device="cuda", fp32=True
+        self, frame_list: list[np.ndarray], input_size: int = 518, device=None, fp32=True
     ) -> np.ndarray:
+        if device is None:
+            device = str(get_device())
         frame_height, frame_width = frame_list[0].shape[:2]
         ratio = max(frame_height, frame_width) / min(frame_height, frame_width)
         if ratio > 1.78:  # we recommend to process video with ratio smaller than 16:9 due to memory limitation

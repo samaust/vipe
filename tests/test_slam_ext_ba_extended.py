@@ -7,7 +7,7 @@ from vipe.ext import slam_ext
 
 def _require_cuda_slam_ext() -> None:
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required for slam_ext BA tests")
+        raise unittest.SkipTest("CUDA is required for slam_ext BA tests")
     if not hasattr(slam_ext, "ba_extended"):
         raise RuntimeError("slam_ext.ba_extended is required for slam_ext BA tests")
 

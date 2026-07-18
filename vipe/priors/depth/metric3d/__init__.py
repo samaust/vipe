@@ -19,6 +19,7 @@ import torch
 
 from vipe.utils.cameras import CameraType
 from vipe.utils.misc import unpack_optional
+from vipe.utils.device import get_device
 
 from ..base import DepthEstimationInput, DepthEstimationModel, DepthEstimationResult, DepthType
 from .model_fn import (
@@ -70,7 +71,7 @@ class Metric3DDepthModel(DepthEstimationModel):
         else:
             raise ValueError("Invalid version number.")
 
-        self.model.cuda().eval()
+        self.model.to(get_device()).eval()
 
     @property
     def depth_type(self) -> DepthType:

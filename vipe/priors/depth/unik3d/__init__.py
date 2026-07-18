@@ -19,6 +19,7 @@ import numpy as np
 import torch
 
 from vipe.utils.misc import unpack_optional
+from vipe.utils.device import get_device
 
 from ..base import DepthEstimationInput, DepthEstimationModel, DepthEstimationResult, DepthType
 from .unik3d import UniK3D
@@ -31,7 +32,7 @@ class Unik3DModel(DepthEstimationModel):
         self.model = UniK3D.from_pretrained(f"lpiccinelli/unik3d-vit{type}")
         self.model.resolution_level = 9
         self.model.interpolation_mode = "bilinear"
-        self.model = self.model.cuda().eval()
+        self.model = self.model.to(get_device()).eval()
 
     @property
     def depth_type(self) -> DepthType:
@@ -50,7 +51,9 @@ class Unik3DModel(DepthEstimationModel):
         rgb = rgb.moveaxis(-1, 1) * 255.0
         H, W = rgb.shape[-2:]
         hfov2 = np.pi
-        camera = Spherical(params=torch.tensor([0, 0, 0, 0, W, H, hfov2, H / W * hfov2]).float().cuda())
+        camera = Spherical(
+            params=torch.tensor([0, 0, 0, 0, W, H, hfov2, H / W * hfov2], device=get_device()).float()
+        )
         outputs = self.model.infer(rgb, camera=camera, normalize=True)
 
         pred_distance = outputs["distance"][0]

@@ -239,7 +239,8 @@ class HourglassDecoder(nn.Module):
         )
 
     def get_bins(self, bins_num):
-        depth_bins_vec = torch.linspace(math.log(self.min_val), math.log(self.max_val), bins_num, device="cuda")
+        device = next(self.parameters()).device
+        depth_bins_vec = torch.linspace(math.log(self.min_val), math.log(self.max_val), bins_num, device=device)
         depth_bins_vec = torch.exp(depth_bins_vec)
         return depth_bins_vec
 
@@ -259,7 +260,9 @@ class HourglassDecoder(nn.Module):
         d = compute_depth_expectation(prob, self.depth_expectation_anchor[:B, ...]).unsqueeze(1)
         return d
 
-    def create_mesh_grid(self, height, width, batch, device="cuda", set_buffer=True):
+    def create_mesh_grid(self, height, width, batch, device=None, set_buffer=True):
+        if device is None:
+            device = next(self.parameters()).device
         y, x = torch.meshgrid(
             [
                 torch.arange(0, height, dtype=torch.float32, device=device),

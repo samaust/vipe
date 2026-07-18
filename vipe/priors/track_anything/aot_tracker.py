@@ -19,14 +19,21 @@ from .aot.utils.checkpoint import load_network
 class AOTTracker(object):
     def __init__(self, cfg, gpu_id=0, model_cache: ModelCache | None = None):
         self.gpu_id = gpu_id
+        self.device = torch.device(gpu_id if isinstance(gpu_id, (str, torch.device)) else f"cuda:{gpu_id}")
 
         # The VOS network holds only weights and is cached/shared across streams.
         # The engine below owns the per-video memory bank (reference frames,
         # masks, object ids), so it is always rebuilt to avoid leaking tracking
         # state between videos.
         def _build_aot_model():
-            model = build_vos_model(cfg.MODEL_VOS, cfg).cuda(gpu_id)
-            model, _ = load_network(model, cfg.TEST_CKPT_PATH, gpu_id)
+            device = self.device
+            # AOT initializes some weights with QR decomposition in its
+            # constructor. Build it on CUDA so that initialization does not
+            # require CPU LAPACK in locally-built PyTorch distributions.
+            with torch.device(device):
+                model = build_vos_model(cfg.MODEL_VOS, cfg)
+            model = model.to(device)
+            model, _ = load_network(model, cfg.TEST_CKPT_PATH, device)
             model.eval()
             return model
 
@@ -103,7 +110,7 @@ class AOTTracker(object):
         if not images:
             raise ValueError("expected at least one image")
 
-        device = torch.device(f"cuda:{self.gpu_id}")
+        device = self.device
         first_shape = tuple(images[0].shape)
         if len(first_shape) != 3 or first_shape[-1] != 3:
             raise ValueError(f"expected HWC RGB image tensor, got shape {first_shape}")

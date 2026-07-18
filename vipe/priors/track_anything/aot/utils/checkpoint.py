@@ -9,8 +9,13 @@ import numpy as np
 import torch
 
 
+def _device(value) -> torch.device:
+    return torch.device(value if isinstance(value, (str, torch.device)) else f"cuda:{value}")
+
+
 def load_network_and_optimizer(net, opt, pretrained_dir, gpu, scaler=None):
-    pretrained = torch.load(pretrained_dir, map_location=torch.device("cuda:" + str(gpu)))
+    device = _device(gpu)
+    pretrained = torch.load(pretrained_dir, map_location=device)
     pretrained_dict = pretrained["state_dict"]
     model_dict = net.state_dict()
     pretrained_dict_update = {}
@@ -29,11 +34,12 @@ def load_network_and_optimizer(net, opt, pretrained_dir, gpu, scaler=None):
     if scaler is not None and "scaler" in pretrained.keys():
         scaler.load_state_dict(pretrained["scaler"])
     del pretrained
-    return net.cuda(gpu), opt, pretrained_dict_remove
+    return net.to(device), opt, pretrained_dict_remove
 
 
 def load_network_and_optimizer_v2(net, opt, pretrained_dir, gpu, scaler=None):
-    pretrained = torch.load(pretrained_dir, map_location=torch.device("cuda:" + str(gpu)))
+    device = _device(gpu)
+    pretrained = torch.load(pretrained_dir, map_location=device)
     # load model
     pretrained_dict = pretrained["state_dict"]
     model_dict = net.state_dict()
@@ -70,13 +76,13 @@ def load_network_and_optimizer_v2(net, opt, pretrained_dir, gpu, scaler=None):
     if scaler is not None and "scaler" in pretrained.keys():
         scaler.load_state_dict(pretrained["scaler"])
     del pretrained
-    return net.cuda(gpu), opt, pretrained_dict_remove
+    return net.to(device), opt, pretrained_dict_remove
 
 
 def load_network(net, pretrained_dir, gpu):
     pretrained = torch.load(
         pretrained_dir,
-        map_location=torch.device("cuda:" + str(gpu)),
+        map_location=_device(gpu),
         weights_only=False,
     )
     if "state_dict" in pretrained.keys():
@@ -99,7 +105,7 @@ def load_network(net, pretrained_dir, gpu):
     model_dict.update(pretrained_dict_update)
     net.load_state_dict(model_dict)
     del pretrained
-    return net.cuda(gpu), pretrained_dict_remove
+    return net.to(_device(gpu)), pretrained_dict_remove
 
 
 def save_network(net, opt, step, save_path, max_keep=8, backup_dir="./saved_models", scaler=None):

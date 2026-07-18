@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
+from vipe.utils.device import get_device
 
 from ..datasets import transforms as T
 
@@ -23,7 +24,7 @@ def preprocess_caption(caption: str) -> str:
     return result + "."
 
 
-def load_model(model_config_path: str, model_checkpoint_path: str, device: str = "cuda"):
+def load_model(model_config_path: str, model_checkpoint_path: str, device: str | torch.device | None = None):
     raise NotImplementedError(
         "The legacy GroundingDINO Model wrapper is not wired in this vendored copy; use Detector instead."
     )
@@ -49,10 +50,11 @@ def predict(
     caption: str,
     box_threshold: float,
     text_threshold: float,
-    device: str = "cuda",
+    device: str | torch.device | None = None,
     remove_combined: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
     caption = preprocess_caption(caption=caption)
+    device = get_device() if device is None else torch.device(device)
 
     model = model.to(device)
     image = image.to(device)
@@ -102,7 +104,13 @@ def predict(
 
 
 class Model:
-    def __init__(self, model_config_path: str, model_checkpoint_path: str, device: str = "cuda"):
+    def __init__(
+        self,
+        model_config_path: str,
+        model_checkpoint_path: str,
+        device: str | torch.device | None = None,
+    ):
+        device = get_device() if device is None else torch.device(device)
         self.model = load_model(
             model_config_path=model_config_path,
             model_checkpoint_path=model_checkpoint_path,

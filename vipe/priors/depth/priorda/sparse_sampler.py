@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from vipe.utils.device import get_device
 
 try:
     import torch_cluster
@@ -19,8 +20,8 @@ except ImportError:
 
 
 class SparseSampler:
-    def __init__(self, device="cuda:0"):
-        self.device = device
+    def __init__(self, device=None):
+        self.device = torch.device(device) if device is not None else get_device()
         self.min_depth = 0.0001  # We always filter out depth <= 0.
 
     def __call__(self, image, prior, geometric=None, pattern=None, K=5, prior_cover=False) -> Dict[str, torch.Tensor]:

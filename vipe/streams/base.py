@@ -30,6 +30,7 @@ from vipe.config import BaseConfigSchema
 from vipe.ext.lietorch import SE3
 from vipe.utils.cameras import CameraType
 from vipe.utils.logging import pbar
+from vipe.utils.device import get_device
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,25 @@ class VideoFrame:
             metric_depth=map_cuda(self.metric_depth),
             pose=map_cuda(self.pose),
             intrinsics=map_cuda(self.intrinsics),
+            camera_type=self.camera_type,
+            information=self.information,
+        )
+
+    def to(self, device: torch.device | str) -> "VideoFrame":
+        target = torch.device(device)
+
+        def map_device(value):
+            return value.to(target) if value is not None else None
+
+        return VideoFrame(
+            raw_frame_idx=self.raw_frame_idx,
+            rgb=self.rgb.to(target),
+            mask=map_device(self.mask),
+            instance=map_device(self.instance),
+            instance_phrases=self.instance_phrases,
+            metric_depth=map_device(self.metric_depth),
+            pose=map_device(self.pose),
+            intrinsics=map_device(self.intrinsics),
             camera_type=self.camera_type,
             information=self.information,
         )
@@ -341,7 +361,7 @@ class MultiviewVideoList(Iterable[VideoStream]):
         return self._name
 
     def rig(self) -> SE3:
-        return self._rig.cuda()
+        return self._rig.to(get_device())
 
     def num_frames(self) -> int:
         return self._len
@@ -383,7 +403,7 @@ class CachedVideoStream(VideoStream):
         assert index < len(self)
         n_iters_needed = index - len(self.data) + 1
         if n_iters_needed <= 0:
-            return self.data[index].cuda()
+            return self.data[index].to(get_device())
 
         itr = range(n_iters_needed)
         if n_iters_needed > self.DISPLAY_THRESH:
@@ -408,7 +428,7 @@ class CachedVideoStream(VideoStream):
             self.iterator = None
             torch.cuda.empty_cache()
 
-        return self.data[index].cuda()
+        return self.data[index].to(get_device())
 
     def __iter__(self):
         for idx in range(len(self)):
@@ -512,7 +532,7 @@ class AsyncCachedVideoStream(VideoStream):
             if index >= len(self.data):
                 raise IndexError(f"Frame index {index} is unavailable in {self._name}; cached {len(self.data)} frames")
             frame = self.data[index]
-        return frame.cuda()
+        return frame.to(get_device())
 
     def __iter__(self):
         for idx in range(len(self)):

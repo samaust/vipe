@@ -88,7 +88,7 @@ class Detector:
 
     def image_transform_grounding_tensor(self, init_image: torch.Tensor) -> torch.Tensor:
         if not isinstance(init_image, torch.Tensor):
-            raise TypeError("GPU GroundingDINO path requires image as a torch.Tensor")
+            raise TypeError("GroundingDINO requires image as a torch.Tensor")
         if init_image.ndim != 3 or init_image.shape[-1] != 3:
             raise ValueError(f"expected HWC RGB tensor, got shape {tuple(init_image.shape)}")
 

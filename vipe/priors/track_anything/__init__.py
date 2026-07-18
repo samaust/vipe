@@ -9,6 +9,7 @@ import torch
 
 from vipe.streams.base import VideoFrame
 from vipe.utils.model_cache import ModelCache
+from vipe.utils.device import get_device
 
 from .seg_tracker import SegTracker
 
@@ -65,7 +66,7 @@ class TrackAnythingPipeline:
                     "crop_n_points_downscale_factor": 2,
                     "min_mask_region_area": 200,
                 },
-                "gpu_id": 0,
+                "gpu_id": get_device(),
             },
             aot_args={
                 "phase": "PRE_YTB_DAV",
@@ -73,7 +74,7 @@ class TrackAnythingPipeline:
                 "model_path": str(aot_ckpt_path),
                 "long_term_mem_gap": 9999,
                 "max_len_long_term": 9999,
-                "gpu_id": 0,
+                "gpu_id": get_device(),
             },
             model_cache=model_cache,
         )
@@ -104,8 +105,8 @@ class TrackAnythingPipeline:
             dict[int, str]: The phrases associated with each object id.
         """
 
-        if not frame_data.rgb.is_cuda:
-            raise RuntimeError("GPU Track Anything path requires frame.rgb to be a CUDA tensor")
+        if frame_data.rgb.device != get_device():
+            raise RuntimeError(f"Track Anything expected {get_device()}, got {frame_data.rgb.device}")
 
         rgb_frame = frame_data.rgb
 

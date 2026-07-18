@@ -17,6 +17,7 @@ import numpy as np
 import torch
 
 from vipe.utils.misc import unpack_optional
+from vipe.utils.device import get_device
 
 from ..base import DepthEstimationInput, DepthEstimationModel, DepthEstimationResult, DepthType
 from .video_depth import VideoDepthAnything
@@ -60,7 +61,7 @@ class VideoDepthAnythingDepthModel(DepthEstimationModel):
             torch.hub.load_state_dict_from_url(self.ckpt_url, map_location="cpu"),
             strict=True,
         )
-        self.model.cuda().eval()
+        self.model.to(get_device()).eval()
 
     @property
     def depth_type(self) -> DepthType:
@@ -68,6 +69,8 @@ class VideoDepthAnythingDepthModel(DepthEstimationModel):
 
     def estimate(self, src: DepthEstimationInput) -> DepthEstimationResult:
         frame_list: list[np.ndarray] = unpack_optional(src.video_frame_list)
-        depths = self.model.infer_video_depth(frame_list, input_size=self.input_size, fp32=self.use_fp32)  # [T, H, W]
-        depths = torch.from_numpy(depths).float().cuda()
+        depths = self.model.infer_video_depth(
+            frame_list, input_size=self.input_size, device=str(get_device()), fp32=self.use_fp32
+        )  # [T, H, W]
+        depths = torch.from_numpy(depths).float().to(get_device())
         return DepthEstimationResult(relative_inv_depth=depths)

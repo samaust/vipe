@@ -31,6 +31,7 @@ from vipe.ext.lietorch import SE3
 from vipe.priors.depth import DepthEstimationInput, DepthEstimationModel
 from vipe.priors.depth.base import DepthType
 from vipe.utils.cameras import CameraType
+from vipe.utils.device import get_device
 from vipe.utils.logging import pbar
 from vipe.utils.misc import unpack_optional
 from vipe.utils.visualization import POINTS_STENCIL, draw_lines_batch, draw_points_batch
@@ -58,8 +59,9 @@ class GraphBuffer:
         ba_config: DictConfig,
         sparse_tracks: SparseTracks,
         camera_type: CameraType,
-        device: torch.device = torch.device("cuda"),
+        device: torch.device | None = None,
     ):
+        device = get_device() if device is None else device
         if cross_view_idx is None:
             cross_view_idx = [(i + 1) % n_views for i in range(n_views)]
 
@@ -69,6 +71,7 @@ class GraphBuffer:
         self.width = width
         self.n_views = n_views
         self.device = device
+        storage_dtype = torch.float32 if device.type == "cpu" else torch.float16
         self.ba_config = ba_config
         self.sparse_tracks = sparse_tracks
         self.camera_type = camera_type
@@ -85,7 +88,7 @@ class GraphBuffer:
             self.height,
             self.width,
             device=device,
-            dtype=torch.float16,
+            dtype=storage_dtype,
         )
         self.dirty = torch.zeros(buffer_size, device=device, dtype=torch.bool)
         # Rig pose defined as the 0-th view of each frame.
@@ -146,7 +149,7 @@ class GraphBuffer:
             self.height // 8,
             self.width // 8,
             device=device,
-            dtype=torch.half,
+            dtype=storage_dtype,
         )
         # - GRU update operator initial state
         self.nets = torch.zeros(
@@ -156,7 +159,7 @@ class GraphBuffer:
             self.height // 8,
             self.width // 8,
             device=device,
-            dtype=torch.half,
+            dtype=storage_dtype,
         )
         # - GRU update operator inputs (context)
         self.inps = torch.zeros(
@@ -166,7 +169,7 @@ class GraphBuffer:
             self.height // 8,
             self.width // 8,
             device=device,
-            dtype=torch.half,
+            dtype=storage_dtype,
         )
 
         # [..., 0] is time, [..., 1] is view

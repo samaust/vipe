@@ -109,8 +109,8 @@ class SparseTracks(ABC):
             uv_flow = self.get_observations(t_vidx, t_fidx, kp_idx) - uv_source
 
             bilinear_splatting_inplace(
-                uv_flow.cuda() * uv_factor,
-                uv_source.cuda() * uv_factor,
+                uv_flow.to(disp_value.device) * uv_factor,
+                uv_source.to(disp_value.device) * uv_factor,
                 disp_value[term_idx],
                 disp_weight[term_idx],
             )

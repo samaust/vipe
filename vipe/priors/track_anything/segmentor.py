@@ -18,7 +18,7 @@ class Segmentor:
             generator_args: args for everything_generator
             gpu_id: device
         """
-        self.device = sam_args["gpu_id"]
+        self.device = torch.device(sam_args["gpu_id"])
 
         # The SAM network holds only weights (inference-only), so it is cached
         # and shared across streams. The mask generator / predictor below wrap
@@ -138,9 +138,9 @@ class Segmentor:
         reset_image: bool = False,
     ) -> torch.Tensor:
         if not isinstance(origin_frame, torch.Tensor):
-            raise TypeError("GPU SAM path requires origin_frame as a torch.Tensor")
+            raise TypeError("SAM requires origin_frame as a torch.Tensor")
         if not isinstance(boxes, torch.Tensor):
-            raise TypeError("GPU SAM path requires boxes as a torch.Tensor")
+            raise TypeError("SAM requires boxes as a torch.Tensor")
 
         if reset_image:
             self.interactive_predictor.set_image_tensor(origin_frame)

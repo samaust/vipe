@@ -27,6 +27,7 @@ from vipe.priors.depth.dav3.api import DepthAnything3
 from vipe.priors.depth.dav3.utils import logger as dav3_logger
 from vipe.utils.cameras import CameraType
 from vipe.utils.misc import unpack_optional
+from vipe.utils.device import get_device
 
 from ..base import DepthEstimationInput, DepthEstimationModel, DepthEstimationResult, DepthType
 
@@ -45,7 +46,7 @@ class DepthAnything3Model(DepthEstimationModel):
             model_name=self.MODEL_NAME,
             weights_path=weights_path,
         )
-        self.model = self.model.cuda().eval()
+        self.model = self.model.to(get_device()).eval()
 
     @property
     def depth_type(self) -> DepthType:
