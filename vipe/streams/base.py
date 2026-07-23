@@ -19,6 +19,7 @@ import logging
 import threading
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Iterable, Iterator, Protocol, cast
 
 import numpy as np
@@ -29,10 +30,18 @@ from torch.utils.data import IterableDataset
 from vipe.config import BaseConfigSchema
 from vipe.ext.lietorch import SE3
 from vipe.utils.cameras import CameraType
-from vipe.utils.logging import pbar
 from vipe.utils.device import get_device
+from vipe.utils.logging import pbar
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class SourceMedia:
+    """Source media used to preserve audio when writing derived videos."""
+
+    path: Path
+    start_time_seconds: float = 0.0
 
 
 class FrameAttribute(Enum):
@@ -323,6 +332,9 @@ class VideoStream(IterableDataset[VideoFrame]):
     def attributes(self) -> set[FrameAttribute]:
         return set()
 
+    def source_media(self) -> SourceMedia | None:
+        return None
+
     def get_stream_attribute(self, attribute: FrameAttribute) -> list[Any]:
         stream_attribute = []
         for frame in self:
@@ -382,6 +394,7 @@ class CachedVideoStream(VideoStream):
         self._fps = video_stream.fps()
         self._name = video_stream.name()
         self._attributes = video_stream.attributes()
+        self._source_media = video_stream.source_media()
         self._len = len(video_stream)
         self.iterator: Iterator[VideoFrame] | None = iter(video_stream)
         self.data: list[VideoFrame] = []
@@ -441,6 +454,9 @@ class CachedVideoStream(VideoStream):
     def attributes(self) -> set[FrameAttribute]:
         return self._attributes
 
+    def source_media(self) -> SourceMedia | None:
+        return self._source_media
+
 
 class AsyncCachedVideoStream(VideoStream):
     """
@@ -460,6 +476,7 @@ class AsyncCachedVideoStream(VideoStream):
         self._fps = video_stream.fps()
         self._name = video_stream.name()
         self._attributes = video_stream.attributes()
+        self._source_media = video_stream.source_media()
         self._len = len(video_stream)
         self.iterator: Iterator[VideoFrame] | None = iter(video_stream)
         self.data: list[VideoFrame] = []
@@ -543,6 +560,9 @@ class AsyncCachedVideoStream(VideoStream):
     def attributes(self) -> set[FrameAttribute]:
         return self._attributes
 
+    def source_media(self) -> SourceMedia | None:
+        return self._source_media
+
 
 class StreamProcessor(Protocol):
     """
@@ -608,6 +628,9 @@ class ProcessedVideoStream(VideoStream):
         for processor in self.processors:
             attributes = processor.update_attributes(attributes)
         return attributes
+
+    def source_media(self) -> SourceMedia | None:
+        return self.stream.source_media()
 
     def name(self) -> str:
         return self.stream.name()

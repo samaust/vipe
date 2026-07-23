@@ -34,12 +34,13 @@ from vipe.streams.base import (
     FrameAttribute,
     MultiviewVideoList,
     ProcessedVideoStream,
+    SourceMedia,
     StreamProcessor,
     VideoStream,
 )
 from vipe.utils import io
-from vipe.utils.geometry import project_points_to_panorama, se3_to_so3, so3_to_se3
 from vipe.utils.device import get_device
+from vipe.utils.geometry import project_points_to_panorama, se3_to_so3, so3_to_se3
 from vipe.utils.visualization import save_projection_video
 
 from . import AnnotationPipelineOutput, Pipeline
@@ -81,6 +82,9 @@ class MergedPanoramaVideoStream(VideoStream):
 
     def fps(self) -> float:
         return self.pano_stream.fps()
+
+    def source_media(self) -> SourceMedia | None:
+        return self.pano_stream.source_media()
 
     def __len__(self) -> int:
         return len(self.pano_stream)

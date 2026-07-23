@@ -45,6 +45,7 @@ warn_unused_ignores = false
 [[tool.mypy.overrides]]
 module = [
     "ffmpeg",
+    "imageio_ffmpeg",
     "Imath",
     "OpenEXR",
     "pandas",

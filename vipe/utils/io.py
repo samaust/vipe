@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import logging
+import os
+import subprocess
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -22,6 +24,7 @@ from typing import Iterator, cast
 
 import cv2
 import imageio
+import imageio_ffmpeg
 import Imath
 import numpy as np
 import OpenEXR
@@ -233,10 +236,67 @@ def read_intrinsics_artifacts(
 
 
 def save_rgb_artifacts(out_path: ArtifactPath, cached_final_stream: VideoStream) -> None:
-    # Save original RGB as H264-encoded video.
-    with VideoWriter(out_path.rgb_path, cached_final_stream.fps()) as rgb_writer:
-        for frame_data in cached_final_stream:
-            rgb_writer.write((frame_data.rgb.cpu().numpy() * 255).astype(np.uint8))
+    """Save RGB as H264 video and preserve audio from an MP4 source, when available."""
+    destination = out_path.rgb_path
+    destination.parent.mkdir(exist_ok=True, parents=True)
+    silent_path: Path | None = None
+    muxed_path: Path | None = None
+
+    try:
+        with tempfile.NamedTemporaryFile(dir=destination.parent, suffix=".mp4", delete=False) as temporary:
+            silent_path = Path(temporary.name)
+
+        frame_count = 0
+        with VideoWriter(silent_path, cached_final_stream.fps()) as rgb_writer:
+            for frame_data in cached_final_stream:
+                rgb_writer.write((frame_data.rgb.cpu().numpy() * 255).astype(np.uint8))
+                frame_count += 1
+
+        source_media = cached_final_stream.source_media()
+        if source_media is None:
+            os.replace(silent_path, destination)
+            silent_path = None
+            return
+
+        with tempfile.NamedTemporaryFile(dir=destination.parent, suffix=".mp4", delete=False) as temporary:
+            muxed_path = Path(temporary.name)
+
+        duration = frame_count / cached_final_stream.fps()
+        command = [
+            imageio_ffmpeg.get_ffmpeg_exe(),
+            "-y",
+            "-i",
+            str(silent_path),
+            "-ss",
+            str(source_media.start_time_seconds),
+            "-i",
+            str(source_media.path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0?",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-t",
+            str(duration),
+            str(muxed_path),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            details = result.stderr.strip().splitlines()
+            reason = details[-1] if details else f"ffmpeg exited with status {result.returncode}"
+            raise RuntimeError(
+                f"Failed to add audio from {source_media.path} to RGB artifact {destination}: {reason}"
+            )
+
+        os.replace(muxed_path, destination)
+        muxed_path = None
+    finally:
+        for temporary_path in (silent_path, muxed_path):
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
 
 def read_rgb_artifacts(rgb_file_path: Path) -> Iterator[tuple[int, torch.Tensor]]:

@@ -18,7 +18,7 @@ from pathlib import Path
 import cv2
 import torch
 
-from vipe.streams.base import ProcessedVideoStream, StreamList, VideoFrame, VideoStream
+from vipe.streams.base import ProcessedVideoStream, SourceMedia, StreamList, VideoFrame, VideoStream
 from vipe.utils.device import get_device
 
 
@@ -49,6 +49,7 @@ class RawMp4Stream(VideoStream):
         self.end = min(self.end, _n_frames)
         self.step = seek_range.step
         self._fps = _fps / self.step
+        self._source_media = SourceMedia(path=self.path, start_time_seconds=self.start / _fps)
 
     def frame_size(self) -> tuple[int, int]:
         return (self._height, self._width)
@@ -58,6 +59,9 @@ class RawMp4Stream(VideoStream):
 
     def name(self) -> str:
         return self._name
+
+    def source_media(self) -> SourceMedia:
+        return self._source_media
 
     def __len__(self) -> int:
         return len(range(self.start, self.end, self.step))
