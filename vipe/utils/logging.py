@@ -18,7 +18,7 @@ import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterable, Iterator, Literal, TypeVar
+from typing import Iterable, Iterator, Literal, TextIO, TypeVar
 
 import tqdm
 
@@ -35,6 +35,7 @@ class _ConsoleState:
     interactive: bool = False
     stage_total: int = 0
     stage_index: int = 0
+    stream: TextIO = sys.stderr
 
 
 _state = _ConsoleState()
@@ -43,9 +44,13 @@ _state = _ConsoleState()
 class TqdmLoggingHandler(logging.Handler):
     """Write log records without corrupting an active tqdm progress bar."""
 
+    def __init__(self, stream: TextIO) -> None:
+        super().__init__()
+        self.stream = stream
+
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            tqdm.tqdm.write(self.format(record), file=sys.stderr)
+            tqdm.tqdm.write(self.format(record), file=self.stream)
         except Exception:
             self.handleError(record)
 
@@ -56,20 +61,23 @@ def configure_logging(
     verbose: bool = False,
     interactive: bool | None = None,
     stage_total: int = 0,
+    stream: TextIO | None = None,
 ) -> logging.Logger:
     """Configure ViPE's user-facing logging and progress behavior."""
     global disable_progress_bar
 
+    output_stream = sys.stderr if stream is None else stream
     _state.quiet = quiet
     _state.verbose = verbose
-    _state.interactive = sys.stderr.isatty() if interactive is None else interactive
+    _state.interactive = output_stream.isatty() if interactive is None else interactive
     _state.stage_total = stage_total
     _state.stage_index = 0
+    _state.stream = output_stream
     disable_progress_bar = quiet or not _state.interactive
 
     logger = logging.getLogger("vipe")
     logger.handlers.clear()
-    handler = TqdmLoggingHandler()
+    handler = TqdmLoggingHandler(output_stream)
     if verbose:
         handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
         logger.setLevel(logging.DEBUG)
@@ -95,7 +103,7 @@ def _stage_label(name: str, index: int) -> str:
 def console_message(message: str, *, error: bool = False) -> None:
     if _state.quiet and not error:
         return
-    tqdm.tqdm.write(message, file=sys.stderr)
+    tqdm.tqdm.write(message, file=_state.stream)
 
 
 @contextmanager
@@ -123,4 +131,4 @@ def pbar(iterable: Iterable[T], *, level: ProgressLevel = "normal", **kwargs) ->
         return iterable
     kwargs.setdefault("dynamic_ncols", True)
     kwargs.setdefault("unit", "frame")
-    return tqdm.tqdm(iterable, file=sys.stderr, **kwargs)
+    return tqdm.tqdm(iterable, file=_state.stream, **kwargs)

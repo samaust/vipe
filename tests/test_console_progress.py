@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import pytest
 
@@ -33,6 +34,20 @@ def test_non_tty_stage_uses_plain_lines(capsys: pytest.CaptureFixture[str]) -> N
     stderr = capsys.readouterr().err
     assert "[1/1] Read input..." in stderr
     assert "[1/1] Read input completed in" in stderr
+
+
+def test_configured_stdout_receives_logs_and_progress(capsys: pytest.CaptureFixture[str]) -> None:
+    logger = configure_logging(interactive=False, stage_total=1, stream=sys.stdout)
+
+    logger.info("Preparing model")
+    with progress_stage("Process"):
+        pass
+
+    captured = capsys.readouterr()
+    assert "Preparing model" in captured.out
+    assert "[1/1] Process..." in captured.out
+    assert "[1/1] Process completed in" in captured.out
+    assert captured.err == ""
 
 
 def test_failed_stage_reports_failure_and_preserves_exception(capsys: pytest.CaptureFixture[str]) -> None:
@@ -75,3 +90,13 @@ def test_detailed_progress_requires_verbose(monkeypatch: pytest.MonkeyPatch) -> 
     configure_logging(verbose=True, interactive=True)
     list(pbar(range(1), level="detail"))
     assert len(calls) == 1
+
+
+def test_progress_bar_uses_configured_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(logging_module.tqdm, "tqdm", lambda iterable, **kwargs: calls.append(kwargs) or iterable)
+
+    configure_logging(verbose=True, interactive=True, stream=sys.stdout)
+    list(pbar(range(1)))
+
+    assert calls[0]["file"] is sys.stdout
