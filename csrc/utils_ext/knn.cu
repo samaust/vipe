@@ -29,7 +29,7 @@ std::vector<torch::Tensor> nearestNeighboursCuda(torch::Tensor query, torch::Ten
     CHECK_IS_FLOAT(query);
     CHECK_CUDA(tree);
     CHECK_IS_FLOAT(tree);
-    TORCH_CHECK(tree.size(0) >= knn, "knn is too small compared to the size of point cloud!");
+    TORCH_CHECK(knn > 0 && tree.size(0) >= knn, "knn must be positive and no larger than the tree");
 
     torch::Tensor strided_tree = tree;
     torch::Tensor strided_query = query;

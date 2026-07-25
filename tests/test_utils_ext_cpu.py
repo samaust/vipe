@@ -25,6 +25,21 @@ class UtilsExtCPUTest(unittest.TestCase):
         torch.testing.assert_close(cpu_distance, gpu_distance.cpu(), atol=1e-5, rtol=1e-5)
         torch.testing.assert_close(cpu_index, gpu_index.cpu())
 
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required for the small-tree regression test")
+    def test_cuda_supports_tree_smaller_than_leaf_capacity(self):
+        tree = torch.tensor([[1.0, 2.0, 3.0]], device="cuda")
+        query = torch.tensor([[2.0, 2.0, 3.0]], device="cuda")
+
+        distance, index = utils_ext.nearest_neighbours(query, tree, 1)
+
+        torch.testing.assert_close(distance.cpu(), torch.tensor([[1.0]]))
+        torch.testing.assert_close(index.cpu(), torch.tensor([[0]], dtype=torch.int32))
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required for CUDA input validation")
+    def test_cuda_rejects_empty_tree(self):
+        with self.assertRaisesRegex(RuntimeError, "knn must be positive and no larger than the tree"):
+            utils_ext.nearest_neighbours(torch.empty(1, 3, device="cuda"), torch.empty(0, 3, device="cuda"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

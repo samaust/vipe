@@ -44,6 +44,7 @@
 #include <thrust/scan.h>
 #include <thrust/count.h>
 
+#include <algorithm>
 #include <limits>
 
 __device__ __forceinline__
@@ -678,7 +679,8 @@ namespace tinyflann {
         CudaKdTreeBuilder(const thrust::device_vector<float4> &points, int max_leaf_size)
                 : /*out_of_space_(1,0),node_count_(1,1),*/ max_leaf_size_(max_leaf_size) {
             points_ = &points;
-            int prealloc = points.size() / max_leaf_size_ * 16;
+            const size_t leaf_blocks = (points.size() + max_leaf_size_ - 1) / max_leaf_size_;
+            const int prealloc = static_cast<int>(16 * std::max<size_t>(1, leaf_blocks));
             allocation_info_.resize(3);
             allocation_info_[NodeCount] = 1;
             allocation_info_[NodesAllocated] = prealloc;
