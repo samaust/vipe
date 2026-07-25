@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel", "torch"]
 build-backend = "setuptools.build_meta"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]
@@ -22,7 +22,7 @@ ignore = [
 ]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 files = [
     "run.py",
     "scripts",
@@ -30,7 +30,6 @@ files = [
 ]
 exclude = [
     "^build/",
-    "^third_party/",
     "^vipe\\.egg-info/",
     "^vipe_results/",
     "^vipe/ext/lietorch/",
@@ -70,13 +69,10 @@ authors = [
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "torch",
     "torchvision",
-    # Locally-built PyTorch wheels do not declare this runtime dependency.  It
-    # supplies libcudnn.so.9, which the CUDA build in third_party links against.
-    "nvidia-cudnn-cu12==9.10.2.21; sys_platform == 'linux'",
     "click",
     "einops",
     "gdown",
@@ -108,7 +104,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
@@ -142,17 +138,21 @@ default-groups = []
 
 [tool.uv.extra-build-dependencies]
 nvidia-vipe = [
-    "torch",
-    "nvidia-cudnn-cu12==9.10.2.21",
+    {requirement = "torch", match-runtime = true},
 ]
 
 [tool.uv.sources]
 torch = [
-    {path = "./third_party/torch-2.13.0a0+gitcf30153-cp312-cp312-linux_x86_64.whl"},
+    {index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'"},
 ]
 torchvision = [
-    {path = "./third_party/torchvision-0.28.0+8fb8771-cp312-cp312-linux_x86_64.whl"},
+    {index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'"},
 ]
 openexr = [
     {git = "https://github.com/AcademySoftwareFoundation/openexr.git", tag = "v3.2.10"},
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true

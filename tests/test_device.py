@@ -16,6 +16,14 @@ def test_configure_cpu_device() -> None:
     assert get_device() == torch.device("cpu")
 
 
+def test_configure_cuda_resolves_current_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 2)
+
+    assert configure_device("cuda") == torch.device("cuda:2")
+    assert get_device() == torch.device("cuda:2")
+
+
 def test_rejects_unsupported_device() -> None:
     with pytest.raises(ValueError, match="Unsupported ViPE device"):
         configure_device("meta")
