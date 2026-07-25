@@ -19,7 +19,6 @@ import logging
 import pickle
 from pathlib import Path
 
-import torch
 from omegaconf import DictConfig
 
 from vipe.slam.system import SLAMOutput, SLAMSystem
@@ -34,6 +33,7 @@ from vipe.streams.base import (
 from vipe.utils import io
 from vipe.utils.cameras import CameraType
 from vipe.utils.device import get_device
+from vipe.utils.logging import progress_stage
 from vipe.utils.visualization import save_projection_video
 
 from . import AnnotationPipelineOutput, Pipeline
@@ -153,32 +153,60 @@ class DefaultAnnotationPipeline(Pipeline):
             annotate_output.payload = slam_output
             return annotate_output
 
-        output_streams = [
-            self._add_post_processors(view_idx, slam_stream, slam_output).cache("depth", online=True)
-            for view_idx, slam_stream in enumerate(slam_streams)
-        ]
+        if self.post_cfg.depth_align_model is not None:
+            with progress_stage("Estimate and align metric depth"):
+                output_streams = [
+                    self._add_post_processors(view_idx, slam_stream, slam_output).cache(
+                        "Aligning metric depth", online=True
+                    )
+                    for view_idx, slam_stream in enumerate(slam_streams)
+                ]
+                # Materialize post-processing so this stage owns its frame progress and timing.
+                for output_stream in output_streams:
+                    _ = output_stream[len(output_stream) - 1]
+        else:
+            output_streams = [
+                self._add_post_processors(view_idx, slam_stream, slam_output).cache("Post-processing", online=True)
+                for view_idx, slam_stream in enumerate(slam_streams)
+            ]
 
         # Dumping artifacts for all views in the streams
-        for output_stream, artifact_path in zip(output_streams, artifact_paths):
-            artifact_path.meta_info_path.parent.mkdir(exist_ok=True, parents=True)
-            if self.out_cfg.save_artifacts:
-                logger.info(f"Saving artifacts to {artifact_path}")
-                io.save_artifacts(artifact_path, output_stream)
-                with artifact_path.meta_info_path.open("wb") as f:
-                    pickle.dump({"ba_residual": slam_output.ba_residual}, f)
+        writes_output = self.out_cfg.save_artifacts or self.out_cfg.save_viz or self.out_cfg.save_slam_map
+        if writes_output:
+            with progress_stage("Write output files"):
+                for output_stream, artifact_path in zip(output_streams, artifact_paths):
+                    artifact_path.meta_info_path.parent.mkdir(exist_ok=True, parents=True)
+                    if self.out_cfg.save_artifacts:
+                        annotate_output.written_paths = [
+                            *annotate_output.written_paths,
+                            *io.save_artifacts(artifact_path, output_stream),
+                        ]
+                        with artifact_path.meta_info_path.open("wb") as f:
+                            pickle.dump({"ba_residual": slam_output.ba_residual}, f)
+                        annotate_output.written_paths = [
+                            *annotate_output.written_paths,
+                            artifact_path.meta_info_path,
+                        ]
 
-            if self.out_cfg.save_viz:
-                save_projection_video(
-                    artifact_path.meta_vis_path,
-                    output_stream,
-                    slam_output,
-                    self.out_cfg.viz_downsample,
-                    self.out_cfg.viz_attributes,
-                )
+                    if self.out_cfg.save_viz:
+                        save_projection_video(
+                            artifact_path.meta_vis_path,
+                            output_stream,
+                            slam_output,
+                            self.out_cfg.viz_downsample,
+                            self.out_cfg.viz_attributes,
+                        )
+                        annotate_output.written_paths = [
+                            *annotate_output.written_paths,
+                            artifact_path.meta_vis_path,
+                        ]
 
-            if self.out_cfg.save_slam_map and slam_output.slam_map is not None:
-                logger.info(f"Saving SLAM map to {artifact_path.slam_map_path}")
-                slam_output.slam_map.save(artifact_path.slam_map_path)
+                    if self.out_cfg.save_slam_map and slam_output.slam_map is not None:
+                        slam_output.slam_map.save(artifact_path.slam_map_path)
+                        annotate_output.written_paths = [
+                            *annotate_output.written_paths,
+                            artifact_path.slam_map_path,
+                        ]
 
         if self.return_output_streams:
             annotate_output.output_streams = output_streams

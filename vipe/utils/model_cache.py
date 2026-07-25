@@ -68,14 +68,14 @@ class ModelCache:
         """Drop and return one cached object, or ``None`` when absent."""
         model = self._models.pop(key, None)
         if model is not None:
-            logger.info("Evicting cached model '%s'", key)
+            logger.debug("Evicting cached model '%s'", key)
         return model
 
     def clear_prefix(self, prefix: str) -> int:
         """Drop all objects whose cache keys start with ``prefix``."""
         keys = [key for key in self._models if key.startswith(prefix)]
         for key in keys:
-            logger.info("Evicting cached model '%s'", key)
+            logger.debug("Evicting cached model '%s'", key)
             del self._models[key]
         if keys:
             gc.collect()

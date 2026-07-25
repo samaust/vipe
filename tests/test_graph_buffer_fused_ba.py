@@ -276,7 +276,7 @@ class GraphBufferFusedBATest(unittest.TestCase):
         ba_inputs = _make_real_run_shaped_ba_inputs(fused)
         target, weight, disp_damping, ii, jj = ba_inputs
 
-        with self.assertLogs("vipe.slam.components.buffer", level="INFO") as logs:
+        with self.assertLogs("vipe.slam.components.buffer", level="DEBUG") as logs:
             fused.bundle_adjustment(
                 target=target.clone(),
                 weight=weight.clone(),

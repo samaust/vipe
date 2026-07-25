@@ -253,7 +253,7 @@ class GraphBuffer:
                 )
                 return
 
-            frames_to_update = pbar(range(self.n_frames), desc="Update depth")
+            frames_to_update = pbar(range(self.n_frames), desc="Updating keyframe depth", level="detail")
 
         assert self.n_views == 1
         intrinsics = unpack_optional(self.intrinsics)
@@ -465,7 +465,7 @@ class GraphBuffer:
             ) from exc
 
         if verbose:
-            logger.info(f"BA iters = {n_iters}, energy: {ba_energy[0].item()} -> {ba_energy[-1].item()}")
+            logger.debug(f"BA iters = {n_iters}, energy: {ba_energy[0].item()} -> {ba_energy[-1].item()}")
 
         if optimize_intrinsics:
             self.intrinsics[0, :4] = intrinsics / intrinsics_scale
@@ -679,7 +679,7 @@ class GraphBuffer:
                 ba_energy.append(solver.run_inplace(variables))
 
         if verbose:
-            logger.info(f"BA iters = {n_iters}, energy: {ba_energy[0]} -> {ba_energy[-1]}")
+            logger.debug(f"BA iters = {n_iters}, energy: {ba_energy[0]} -> {ba_energy[-1]}")
 
         self.disps.clamp_(min=0.001)
 

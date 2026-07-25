@@ -17,7 +17,7 @@
 import gc
 import logging
 import os
-from typing import Any, Iterable, Iterator, cast
+from typing import Any, Iterator, cast
 
 import numpy as np
 import torch
@@ -313,7 +313,7 @@ class AdaptiveDepthProcessor(StreamProcessor):
 
         first_frame = frame_data_list[0].to(get_device())
         min_uv_score = self._compute_min_uv_score(first_frame, slam_map)
-        logger.info(f"Minimum UV score: {min_uv_score:.4f}")
+        logger.debug(f"Minimum UV score: {min_uv_score:.4f}")
 
         video_depth_result = self._compute_video_da(frame_data_list)
         if min_uv_score < 0.3:
@@ -322,7 +322,12 @@ class AdaptiveDepthProcessor(StreamProcessor):
             self.prompt_model = self._make_prompt_depth_model()
 
         try:
-            for frame_idx, frame in pbar(enumerate(frame_data_list), desc="Aligning depth"):
+            for frame_idx, frame in pbar(
+                enumerate(frame_data_list),
+                desc="Aligning depth",
+                total=len(frame_data_list),
+                level="detail",
+            ):
                 # Convert back to the configured device if not already.
                 frame = frame.to(get_device())
 

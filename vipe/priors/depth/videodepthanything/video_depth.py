@@ -17,14 +17,14 @@ import numpy as np
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import torch
-from vipe.utils.device import get_device
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.transforms import Compose
-from tqdm import tqdm
 
 from vipe.priors.depth.dav2.dinov2 import DINOv2
 from vipe.priors.depth.dav2.util.transform import NormalizeImage, PrepareForNet, Resize
+from vipe.utils.device import get_device
+from vipe.utils.logging import pbar
 
 from .dpt_temporal import DPTHeadTemporal
 from .util import compute_scale_and_shift, get_interpolate_frames
@@ -111,7 +111,12 @@ class VideoDepthAnything(nn.Module):
 
         depth_list = []
         pre_input = None
-        for frame_id in tqdm(range(0, org_video_len, frame_step)):
+        for frame_id in pbar(
+            range(0, org_video_len, frame_step),
+            desc="Estimating video depth",
+            level="detail",
+            unit="batch",
+        ):
             cur_list = []
             for i in range(INFER_LEN):
                 # cur_list.append(torch.from_numpy(transform({'image': frame_list[frame_id+i].astype(np.float32) / 255.0})['image']).unsqueeze(0).unsqueeze(0))

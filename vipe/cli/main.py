@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
 from pathlib import Path
 
 import click
@@ -22,8 +23,8 @@ from vipe.config import parse_typed_config
 from vipe.streams.base import ProcessedVideoStream
 from vipe.streams.frame_dir_stream import FrameDirStream
 from vipe.streams.raw_mp4_stream import RawMp4Stream
-from vipe.utils.logging import configure_logging
 from vipe.utils.device import configure_device
+from vipe.utils.logging import configure_logging, console_message, progress_stage
 from vipe.utils.viser import run_viser
 
 
@@ -43,10 +44,21 @@ from vipe.utils.viser import run_viser
 )
 @click.option("--pipeline", "-p", default="default", help="Pipeline configuration to use (default: 'default')")
 @click.option("--visualize", "-v", is_flag=True, help="Enable visualization of intermediate results")
-def infer(video: Path | None, image_dir: Path | None, output: Path, pipeline: str, visualize: bool):
+@click.option("--quiet", "-q", is_flag=True, help="Only show warnings and errors")
+@click.option("--verbose", is_flag=True, help="Show detailed model and optimization diagnostics")
+def infer(
+    video: Path | None,
+    image_dir: Path | None,
+    output: Path,
+    pipeline: str,
+    visualize: bool,
+    quiet: bool,
+    verbose: bool,
+):
     """Run inference on a video file or directory of images."""
 
-    logger = configure_logging()
+    if quiet and verbose:
+        raise click.UsageError("--quiet and --verbose cannot be used together")
 
     # Validate that exactly one input source is provided
     if not video and not image_dir:
@@ -72,21 +84,34 @@ def infer(video: Path | None, image_dir: Path | None, output: Path, pipeline: st
         input_desc = f"video {video}"
 
     args = parse_typed_config("default", hydra_args=overrides)
+    has_depth_stage = args.pipeline.post.depth_align_model is not None
+    writes_output = any(
+        bool(getattr(args.pipeline.output, option, False))
+        for option in ("save_artifacts", "save_viz", "save_slam_map")
+    )
+    stage_total = 3 + int(has_depth_stage) + int(writes_output)
+    logger = configure_logging(quiet=quiet, verbose=verbose, stage_total=stage_total)
     configure_device(args.device)
 
-    logger.info(f"Processing {input_desc}...")
+    started = time.monotonic()
+    logger.info(f"Processing {input_desc}")
     vipe_pipeline = make_pipeline(args.pipeline)
 
-    if image_dir:
-        # Use frame directory stream
-        video_stream = ProcessedVideoStream(FrameDirStream(image_dir), []).cache(desc="Reading image frames")
-    else:
-        assert video is not None
-        # Some input videos can be malformed, so we need to cache the videos to obtain correct number of frames.
-        video_stream = ProcessedVideoStream(RawMp4Stream(video), []).cache(desc="Reading video stream")
+    with progress_stage("Read and validate input frames"):
+        if image_dir:
+            video_stream = ProcessedVideoStream(FrameDirStream(image_dir), []).cache(desc="Reading image frames")
+        else:
+            assert video is not None
+            # Cache the stream to obtain a reliable frame count even for malformed videos.
+            video_stream = ProcessedVideoStream(RawMp4Stream(video), []).cache(desc="Reading video")
 
-    vipe_pipeline.run(video_stream)
-    logger.info("Finished")
+    result = vipe_pipeline.run(video_stream)
+    elapsed = time.monotonic() - started
+    console_message(f"Finished processing {len(video_stream)} frames in {elapsed:.1f}s")
+    if result.written_paths:
+        console_message("Outputs:")
+        for path in result.written_paths:
+            console_message(f"  {path.resolve()}")
 
 
 @click.command()

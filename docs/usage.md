@@ -16,8 +16,26 @@ Useful options:
 | --- | --- |
 | `--output`, `-o` | Output directory. Defaults to `vipe_results`. |
 | `--visualize`, `-v` | Enable visualization of intermediate and final results. |
+| `--quiet`, `-q` | Only print warnings and errors. |
+| `--verbose` | Include model lifecycle and optimization diagnostics. |
 | `--pipeline`, `-p` | Pipeline configuration to use. Defaults to `default`. |
 | `--image-dir` | Process a directory of image frames instead of an MP4 file. |
+
+By default, inference reports numbered processing stages, frame progress, elapsed
+time, and the paths of all generated files. When output is redirected or ViPE
+runs in CI, animated progress bars are replaced with plain stage start and
+completion lines.
+
+```text
+[1/5] Read and validate input frames...
+Reading video: 100%|██████████| 122/122 [00:01<00:00, 76.9frame/s]
+[1/5] Read and validate input frames completed in 1.6s
+...
+Finished processing 122 frames in 58.7s
+Outputs:
+  /path/to/vipe_results/rgb/dog-example.mp4
+  /path/to/vipe_results/vipe/dog-example_slam_map.pt
+```
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/nv-tlabs/vipe/main/assets/vipe-vis.gif" alt="ViPE visualization video">

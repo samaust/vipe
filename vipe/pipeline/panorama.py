@@ -41,6 +41,7 @@ from vipe.streams.base import (
 from vipe.utils import io
 from vipe.utils.device import get_device
 from vipe.utils.geometry import project_points_to_panorama, se3_to_so3, so3_to_se3
+from vipe.utils.logging import progress_stage
 from vipe.utils.visualization import save_projection_video
 
 from . import AnnotationPipelineOutput, Pipeline
@@ -307,20 +308,30 @@ class PanoramaAnnotationPipeline(Pipeline):
             )
         )
 
-        if self.out_cfg.save_artifacts:
-            io.save_artifacts(artifact_path, output_stream)
+        if self.out_cfg.save_artifacts or self.out_cfg.save_viz:
+            with progress_stage("Write output files"):
+                if self.out_cfg.save_artifacts:
+                    annotate_output.written_paths = io.save_artifacts(artifact_path, output_stream)
 
-            artifact_path.meta_info_path.parent.mkdir(exist_ok=True, parents=True)
-            with artifact_path.meta_info_path.open("wb") as f:
-                pickle.dump({"finished": True}, f)
+                    artifact_path.meta_info_path.parent.mkdir(exist_ok=True, parents=True)
+                    with artifact_path.meta_info_path.open("wb") as f:
+                        pickle.dump({"finished": True}, f)
+                    annotate_output.written_paths = [
+                        *annotate_output.written_paths,
+                        artifact_path.meta_info_path,
+                    ]
 
-        if self.out_cfg.save_viz:
-            save_projection_video(
-                artifact_path.meta_vis_path,
-                output_stream,
-                slam_output,
-                self.out_cfg.viz_downsample,
-                self.out_cfg.viz_attributes,
-            )
+                if self.out_cfg.save_viz:
+                    save_projection_video(
+                        artifact_path.meta_vis_path,
+                        output_stream,
+                        slam_output,
+                        self.out_cfg.viz_downsample,
+                        self.out_cfg.viz_attributes,
+                    )
+                    annotate_output.written_paths = [
+                        *annotate_output.written_paths,
+                        artifact_path.meta_vis_path,
+                    ]
 
         return annotate_output

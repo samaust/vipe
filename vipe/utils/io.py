@@ -398,7 +398,7 @@ def read_instance_phrases(instance_phrase_path: Path) -> dict[int, str]:
     return instance_phrases
 
 
-def save_artifacts(out_path: ArtifactPath, cached_final_stream: VideoStream) -> None:
+def save_artifacts(out_path: ArtifactPath, cached_final_stream: VideoStream) -> list[Path]:
     """
     Save each attribute independently.
     """
@@ -439,3 +439,14 @@ def save_artifacts(out_path: ArtifactPath, cached_final_stream: VideoStream) -> 
         with out_path.mask_phrase_path.open("w") as f:
             for idx, phrase in instance_phrases_combined.items():
                 f.write(f"{idx}: {phrase}\n")
+
+    candidates = [
+        out_path.rgb_path,
+        out_path.pose_path,
+        out_path.depth_path,
+        out_path.intrinsics_path,
+        out_path.camera_type_path,
+        out_path.mask_path,
+        out_path.mask_phrase_path,
+    ]
+    return [path for path in candidates if path.exists()]

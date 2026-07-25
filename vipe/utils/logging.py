@@ -14,40 +14,113 @@
 # limitations under the License.
 
 import logging
+import sys
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Iterable, Iterator, Literal, TypeVar
 
 import tqdm
+
+ProgressLevel = Literal["normal", "detail"]
+T = TypeVar("T")
 
 disable_progress_bar: bool = False
 
 
-def configure_logging() -> logging.Logger:
-    """
-    Configure the logging system. This will detach all loggers under vipe from the root.
-    To use the package in a bigger project you probably don't want to call this function and instead manage logging yourself.
-    """
+@dataclass
+class _ConsoleState:
+    quiet: bool = False
+    verbose: bool = False
+    interactive: bool = False
+    stage_total: int = 0
+    stage_index: int = 0
+
+
+_state = _ConsoleState()
+
+
+class TqdmLoggingHandler(logging.Handler):
+    """Write log records without corrupting an active tqdm progress bar."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            tqdm.tqdm.write(self.format(record), file=sys.stderr)
+        except Exception:
+            self.handleError(record)
+
+
+def configure_logging(
+    *,
+    quiet: bool = False,
+    verbose: bool = False,
+    interactive: bool | None = None,
+    stage_total: int = 0,
+) -> logging.Logger:
+    """Configure ViPE's user-facing logging and progress behavior."""
+    global disable_progress_bar
+
+    _state.quiet = quiet
+    _state.verbose = verbose
+    _state.interactive = sys.stderr.isatty() if interactive is None else interactive
+    _state.stage_total = stage_total
+    _state.stage_index = 0
+    disable_progress_bar = quiet or not _state.interactive
+
     logger = logging.getLogger("vipe")
-
-    # Define a custom logging handler to use tqdm.write
-    class TqdmLoggingHandler(logging.Handler):
-        def emit(self, record):
-            msg = self.format(record)
-            tqdm.tqdm.write(msg)
-
-    # Add the TqdmLoggingHandler to the logger
+    logger.handlers.clear()
     handler = TqdmLoggingHandler()
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
+    if verbose:
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        logger.setLevel(logging.DEBUG)
+    else:
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.setLevel(logging.WARNING if quiet else logging.INFO)
     logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
     logger.propagate = False
-
     return logger
 
 
-def pbar(iterable, **kwargs):
-    """
-    A wrapper around tqdm.tqdm that disables the progress bar if the disable_progress_bar flag is set.
-    """
-    if disable_progress_bar:
+def set_stage_total(total: int) -> None:
+    _state.stage_total = total
+    _state.stage_index = 0
+
+
+def _stage_label(name: str, index: int) -> str:
+    if _state.stage_total:
+        return f"[{index}/{_state.stage_total}] {name}"
+    return name
+
+
+def console_message(message: str, *, error: bool = False) -> None:
+    if _state.quiet and not error:
+        return
+    tqdm.tqdm.write(message, file=sys.stderr)
+
+
+@contextmanager
+def progress_stage(name: str) -> Iterator[None]:
+    """Report a coarse pipeline stage while preserving the original exception."""
+    _state.stage_index += 1
+    label = _stage_label(name, _state.stage_index)
+    started = time.monotonic()
+    console_message(f"{label}...")
+    try:
+        yield
+    except KeyboardInterrupt:
+        console_message(f"{label} cancelled after {time.monotonic() - started:.1f}s", error=True)
+        raise
+    except BaseException:
+        console_message(f"{label} failed after {time.monotonic() - started:.1f}s", error=True)
+        raise
+    else:
+        console_message(f"{label} completed in {time.monotonic() - started:.1f}s")
+
+
+def pbar(iterable: Iterable[T], *, level: ProgressLevel = "normal", **kwargs) -> Iterable[T]:
+    """Render frame progress in a TTY; detailed bars require verbose mode."""
+    if disable_progress_bar or _state.quiet or (level == "detail" and not _state.verbose):
         return iterable
-    return tqdm.tqdm(iterable, **kwargs)
+    kwargs.setdefault("dynamic_ncols", True)
+    kwargs.setdefault("unit", "frame")
+    return tqdm.tqdm(iterable, file=sys.stderr, **kwargs)

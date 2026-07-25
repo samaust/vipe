@@ -28,7 +28,7 @@ from vipe.priors.depth.adapter import PinholeDepthAdapter
 from vipe.priors.depth.base import DepthType
 from vipe.streams.base import FrameAttribute, ProcessedVideoStream, StreamProcessor, VideoFrame, VideoStream
 from vipe.utils.cameras import CameraType
-from vipe.utils.logging import pbar
+from vipe.utils.logging import pbar, progress_stage
 from vipe.utils.misc import unpack_optional
 from vipe.utils.model_cache import ModelCache
 
@@ -279,49 +279,51 @@ class SLAMSystem:
         # Run frontend to get attributes initialization. This will also populate attribute buffers.
         frame_data_list: list[VideoFrame]
         frame_idx: int = 0
-        for frame_idx, frame_data_list in pbar(
-            enumerate(zip(*video_streams)), desc="SLAM Pass (1/2)", total=total_n_frames
-        ):
-            images, buffer_masks = self._precompute_features(frame_data_list)
+        with progress_stage("Initialize estimates and track motion"):
+            for frame_idx, frame_data_list in pbar(
+                enumerate(zip(*video_streams)), desc="Initializing", total=total_n_frames
+            ):
+                images, buffer_masks = self._precompute_features(frame_data_list)
 
-            self.sparse_tracks.track_image(frame_data_list)
+                self.sparse_tracks.track_image(frame_data_list)
 
-            if self.motion_filter.check(images, buffer_masks) or frame_idx == total_n_frames - 1:
-                is_keyframe = True
-                self._add_keyframe(frame_idx, images, buffer_masks, frame_data_list, phase=1)
-            else:
-                is_keyframe = False
+                if self.motion_filter.check(images, buffer_masks) or frame_idx == total_n_frames - 1:
+                    is_keyframe = True
+                    self._add_keyframe(frame_idx, images, buffer_masks, frame_data_list, phase=1)
+                else:
+                    is_keyframe = False
 
-            self.frontend.run()
+                self.frontend.run()
 
+                if self.visualize:
+                    self.buffer.log(self.config.map_filter_thresh)
+                    self.frontend.graph.log()
+
+                # Run the backend in between to correct intrinsics and extrinsics in advance
+                # to avoid large errors and local minima.
+                if self.buffer.n_frames in self.config.frontend_backend_iters and is_keyframe:
+                    self.backend.run_if_necessary(5, log=self.visualize)
+
+            # Tracks can be determined earlier since it's fixed after frontend.
             if self.visualize:
-                self.buffer.log(self.config.map_filter_thresh)
-                self.frontend.graph.log()
+                self.buffer.log_tracks()
 
-            # Run the backend in between to correct intrinsics and extrinsics in advance
-            # to avoid large errors and local minima.
-            if self.buffer.n_frames in self.config.frontend_backend_iters and is_keyframe:
-                self.backend.run_if_necessary(5, log=self.visualize)
+            # Run the backend to perform a global BA over the keyframes.
+            self.backend.run(7, log=self.visualize)
 
-        # Tracks can be determined earlier since it's fixed after frontend.
-        if self.visualize:
-            self.buffer.log_tracks()
-
-        # Run the backend to perform a global BA over the keyframes.
-        self.backend.run(7, log=self.visualize)
-
-        # Run backend again with a new graph and cleared GRU states.
-        self.backend.run(self.config.backend_iters, update_depth=False, log=self.visualize)
+            # Run backend again with a new graph and cleared GRU states.
+            self.backend.run(self.config.backend_iters, update_depth=False, log=self.visualize)
 
         # Infill poses and attributes for non-keyframe frames.
         self.inner_filler.set_start_idx(self.buffer.n_frames)
-        for frame_idx, frame_data_list in pbar(
-            enumerate(zip(*video_streams)), desc="SLAM Pass (2/2)", total=total_n_frames
-        ):
-            images, buffer_masks = self._precompute_features(frame_data_list)
-            self._add_keyframe(frame_idx, images, buffer_masks, frame_data_list, phase=2)
-            if self.inner_filler.check() or frame_idx == total_n_frames - 1:
-                self.inner_filler.compute()
+        with progress_stage("Refine poses for all frames"):
+            for frame_idx, frame_data_list in pbar(
+                enumerate(zip(*video_streams)), desc="Refining poses", total=total_n_frames
+            ):
+                images, buffer_masks = self._precompute_features(frame_data_list)
+                self._add_keyframe(frame_idx, images, buffer_masks, frame_data_list, phase=2)
+                if self.inner_filler.check() or frame_idx == total_n_frames - 1:
+                    self.inner_filler.compute()
 
         filled_return = self.inner_filler.get_result()
 

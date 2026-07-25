@@ -18,6 +18,7 @@ import copy
 import importlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Sequence, cast
 
 from omegaconf import DictConfig
@@ -32,6 +33,7 @@ class AnnotationPipelineOutput:
     # Eager return of the payload values that comes from early stages of the pipeline.
     payload: Any | None = None
     output_streams: Sequence[VideoStream] | None = None
+    written_paths: Sequence[Path] = ()
 
 
 class Pipeline(ABC):
