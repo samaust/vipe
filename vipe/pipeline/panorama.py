@@ -233,7 +233,8 @@ class PanoramaAnnotationPipeline(Pipeline):
         self.out_cfg = output
         self.post_cfg = post
         self.out_path = Path(self.out_cfg.path)
-        self.out_path.mkdir(exist_ok=True, parents=True)
+        if self.out_cfg.save_artifacts or self.out_cfg.save_viz:
+            self.out_path.mkdir(exist_ok=True, parents=True)
 
     def run(self, video_stream: VideoStream | MultiviewVideoList) -> AnnotationPipelineOutput:
         assert isinstance(video_stream, VideoStream), "Panorama pipeline only supports single video stream"

@@ -45,6 +45,10 @@ output:
   # Save reconstruction from SLAM
   save_slam_map: true
 
+  invisible_mask:
+    enabled: true
+    threshold: 0.1
+
   # Visualization videos to BASE_PATH/vipe/xxx.mp4
   save_viz: true
   viz_downsample: 2

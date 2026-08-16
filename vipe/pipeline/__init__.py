@@ -34,6 +34,7 @@ class AnnotationPipelineOutput:
     payload: Any | None = None
     output_streams: Sequence[VideoStream] | None = None
     written_paths: Sequence[Path] = ()
+    ba_residual: float | None = None
 
 
 class Pipeline(ABC):

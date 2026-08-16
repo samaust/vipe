@@ -45,8 +45,7 @@ warn_unused_ignores = false
 module = [
     "ffmpeg",
     "imageio_ffmpeg",
-    "Imath",
-    "OpenEXR",
+    "OpenImageIO",
     "pandas",
     "pandas.*",
     "scipy",
@@ -85,7 +84,7 @@ dependencies = [
     "numpy",
     "omegaconf",
     "opencv-python",
-    "OpenEXR<3.3.0",
+    "OpenImageIO>=3.1.7,<4",
     "pydantic>=2,<3",
     "pillow",
     "python-pycg",
@@ -148,10 +147,6 @@ torch = [
 torchvision = [
     {index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'"},
 ]
-openexr = [
-    {git = "https://github.com/AcademySoftwareFoundation/openexr.git", tag = "v3.2.10"},
-]
-
 [[tool.uv.index]]
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"

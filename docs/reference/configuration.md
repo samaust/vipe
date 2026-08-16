@@ -142,6 +142,15 @@ Depth post-processing options.
 | `release_completed_models` | bool | `true` | - | Release initialization and SLAM networks before depth post-processing to reduce peak memory. |
 | `cpu_knn_chunk_size` | int | `2048` | >= 1 | Maximum number of CPU KNN query points processed per distance-matrix chunk. |
 
+### InvisibleMaskConfig
+
+Final intrinsics-based classification of geometrically invisible pixels.
+
+| Field | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | bool | `true` | - | Replace pixels touching perpendicular or back-facing depth-grid faces with an invisible label. |
+| `threshold` | float | `0.1` | >= 0.0, <= 1.0 | Maximum face-normal/view-vector dot product classified as invisible. |
+
 ### OutputConfig
 
 Output paths and artifact/visualization controls.
@@ -153,6 +162,7 @@ Output paths and artifact/visualization controls.
 | `save_artifacts` | bool | required | - | Save reusable RGB, pose, intrinsics, depth, and mask artifacts for visualization or downstream use. |
 | `save_slam_map` | bool | `false` | - | Save the sparse SLAM reconstruction map for lightweight COLMAP conversion. |
 | `save_viz` | bool | required | - | Render MP4 visualization videos for the configured visualization attributes. |
+| `invisible_mask` | InvisibleMaskConfig | `{"enabled": true, "threshold": 0.1}` | - | Final mask classification performed after SLAM and depth post-processing. |
 | `viz_downsample` | int | required | >= 1 | Downsample factor applied when rendering visualization videos. |
 | `viz_attributes` | list[list[`rgb` \| `instance` \| `depth` \| `pcd` \| `rectified`]] | required | min items 1 | Groups of frame attributes to render into visualization videos. Each inner list becomes one panel. |
 

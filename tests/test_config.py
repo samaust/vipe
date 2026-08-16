@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import hydra
 import pytest
+from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig
 from pydantic import ValidationError
 
@@ -55,6 +57,20 @@ def test_parse_typed_config_accepts_cpu_device(tmp_path: Path) -> None:
     config = parse_typed_config("default", [*_base_overrides(tmp_path), "device=cpu"])
 
     assert config.device == "cpu"
+
+
+def test_parse_typed_config_preserves_existing_global_hydra(tmp_path: Path) -> None:
+    unrelated_config = tmp_path / "unrelated"
+    unrelated_config.mkdir()
+    (unrelated_config / "config.yaml").write_text("owner: other_component\n")
+
+    with hydra.initialize_config_dir(config_dir=str(unrelated_config), version_base=None):
+        existing_hydra = GlobalHydra.instance().hydra
+        config = parse_typed_config("default", _base_overrides(tmp_path))
+
+        assert isinstance(config, ViPEConfig)
+        assert GlobalHydra.instance().hydra is existing_hydra
+        assert hydra.compose(config_name="config").owner == "other_component"
 
 
 def test_parse_typed_config_frame_dir_stream(tmp_path: Path) -> None:
@@ -143,7 +159,10 @@ def test_parse_typed_config_accepts_fused_ba_override(tmp_path: Path) -> None:
     ("overrides", "expected"),
     [
         ([], True),  # default pipeline: single-view pinhole, no robust kernel / rig rotation
-        (["pipeline.init.camera_type=mei"], False),  # non-pinhole camera
+        (
+            ["pipeline.init.camera_type=mei", "pipeline.output.invisible_mask.enabled=false"],
+            False,
+        ),  # non-pinhole camera
         (["pipeline.slam.ba.robust_kernel=huber"], False),  # robust kernel
         (["pipeline.slam.optimize_rig_rotation=true"], False),  # rig-rotation optimization
         (["pipeline.slam.sparse_tracks.name=cuvslam"], False),  # sparse tracks (unsupported by fused)
@@ -167,6 +186,40 @@ def test_default_config_ships_auto_fused_ba(tmp_path: Path) -> None:
     config = parse_typed_config("default", _base_overrides(tmp_path))
 
     assert config.pipeline.slam.ba.fused is True
+
+
+def test_default_config_enables_intrinsics_based_invisible_masks(tmp_path: Path) -> None:
+    config = parse_typed_config("default", _base_overrides(tmp_path))
+
+    assert config.pipeline.output.invisible_mask.enabled is True
+    assert config.pipeline.output.invisible_mask.threshold == 0.1
+
+
+@pytest.mark.parametrize("pipeline", ["wide_angle", "panorama"])
+def test_non_pinhole_presets_disable_invisible_masks(tmp_path: Path, pipeline: str) -> None:
+    config = parse_typed_config("default", _base_overrides(tmp_path, pipeline=pipeline))
+
+    assert config.pipeline.output.invisible_mask.enabled is False
+
+
+def test_wide_angle_rejects_enabling_invisible_masks(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="only supported for pinhole"):
+        parse_typed_config(
+            "default",
+            [
+                *_base_overrides(tmp_path, pipeline="wide_angle"),
+                "pipeline.output.invisible_mask.enabled=true",
+            ],
+        )
+
+
+@pytest.mark.parametrize("threshold", [-0.01, 1.01])
+def test_invisible_mask_threshold_is_bounded(tmp_path: Path, threshold: float) -> None:
+    with pytest.raises(ValidationError):
+        parse_typed_config(
+            "default",
+            [*_base_overrides(tmp_path), f"pipeline.output.invisible_mask.threshold={threshold}"],
+        )
 
 
 def test_default_init_async_prefetch_can_fall_back_to_serialized_cache(tmp_path: Path) -> None:

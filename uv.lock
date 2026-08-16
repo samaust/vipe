@@ -1288,7 +1288,7 @@ dependencies = [
     { name = "numpy" },
     { name = "omegaconf" },
     { name = "opencv-python" },
-    { name = "openexr" },
+    { name = "openimageio" },
     { name = "pillow" },
     { name = "pydantic" },
     { name = "python-pycg" },
@@ -1336,7 +1336,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "omegaconf" },
     { name = "opencv-python" },
-    { name = "openexr", git = "https://github.com/AcademySoftwareFoundation/openexr.git?tag=v3.2.10" },
+    { name = "openimageio", specifier = ">=3.1.7,<4" },
     { name = "pillow" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "python-pycg" },
@@ -1403,9 +1403,20 @@ wheels = [
 ]
 
 [[package]]
-name = "openexr"
-version = "3.2.10"
-source = { git = "https://github.com/AcademySoftwareFoundation/openexr.git?tag=v3.2.10#821935abdf05db156841b692a1deb8d6f48ffd0a" }
+name = "openimageio"
+version = "3.1.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b6/f4/ed005eba84866e1941bde3f85ec621a1e98e95adddb2af52b3e7f5bef8c9/openimageio-3.1.16.0.tar.gz", hash = "sha256:d23169f8ca619695b7c812a2b7fd955685f9e4fdfe3319b1302b535a88bdc0e1", size = 6656091, upload-time = "2026-08-01T00:13:58.71Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f7/0c/1e541037369100e781d2e5d721c696f1f9fb0294cfc3261a155abd46b887/openimageio-3.1.16.0-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:fe8dd1914a569a2b1fa5a2ec83148b6a7d4b0ce089a0bf1f1ce846f18daa4866", size = 7048592, upload-time = "2026-08-01T00:13:41.564Z" },
+    { url = "https://files.pythonhosted.org/packages/52/3a/f2a456947e6e1cc28e25405403b95f1eb2c71fbb2f7f40aa78d2ad7f3c59/openimageio-3.1.16.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:ec031209bb7f0ee110bb3793458709ea7cc972dc9e6ad52a8903030f73f2120b", size = 6630018, upload-time = "2026-08-01T00:13:43.251Z" },
+    { url = "https://files.pythonhosted.org/packages/30/fa/c6200186d35f0b2e44116184288fc6252cd1b8c2e1d74b1dfa13f203c444/openimageio-3.1.16.0-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:cb41b1a55e46a4d1edaf0f2d569fdf7e2fff1f56920db3e02e09864905f34b7e", size = 6597770, upload-time = "2026-08-01T00:13:44.786Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/64/24f3e649e7e66a385eaa745bed1d9818303de89e28fc4b190fb3a0027221/openimageio-3.1.16.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ddafc3493086784f1356d32645487e9232e187cf0b80e6969e2d6c913aab7100", size = 6887678, upload-time = "2026-08-01T00:13:46.368Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/9c/741a7be7d24a062e09b039efc838bab1d9c5a2c51ac8bc585b402083a001/openimageio-3.1.16.0-cp314-cp314-win_amd64.whl", hash = "sha256:e875f9a2b862d7de916a8d50cd42eb0e0cc455a006770ae077025977a92013a0", size = 7978277, upload-time = "2026-08-01T00:13:48.029Z" },
+]
 
 [[package]]
 name = "packaging"

@@ -11,4 +11,6 @@ post:
   depth_align_model: null
 
 output:
+  invisible_mask:
+    enabled: false
   viz_attributes: [['rgb', 'instance'], ['rectified', 'pcd']]

@@ -42,6 +42,7 @@ from .processors import (
     GeoCalibIntrinsicsProcessor,
     MultiviewDepthProcessor,
     TrackAnythingProcessor,
+    add_invisible_masks,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,8 @@ class DefaultAnnotationPipeline(Pipeline):
         self.post_cfg = post
         self.out_cfg = output
         self.out_path = Path(self.out_cfg.path)
-        self.out_path.mkdir(exist_ok=True, parents=True)
+        if self.out_cfg.save_artifacts or self.out_cfg.save_viz or self.out_cfg.save_slam_map:
+            self.out_path.mkdir(exist_ok=True, parents=True)
         self.camera_type = CameraType(self.init_cfg.camera_type)
 
     def _add_init_processors(self, video_stream: VideoStream) -> ProcessedVideoStream:
@@ -141,6 +143,7 @@ class DefaultAnnotationPipeline(Pipeline):
 
         slam_pipeline = SLAMSystem(device=get_device(), config=self.slam_cfg, model_cache=self.model_cache)
         slam_output = slam_pipeline.run(slam_streams, rig=slam_rig, camera_type=self.camera_type)
+        annotate_output.ba_residual = float(slam_output.ba_residual)
 
         if self.post_cfg.release_completed_models:
             slam_pipeline.release_transient_state()
@@ -153,6 +156,7 @@ class DefaultAnnotationPipeline(Pipeline):
             annotate_output.payload = slam_output
             return annotate_output
 
+        output_streams: list[VideoStream]
         if self.post_cfg.depth_align_model is not None:
             with progress_stage("Estimate and align metric depth"):
                 output_streams = [
@@ -172,6 +176,13 @@ class DefaultAnnotationPipeline(Pipeline):
 
         # Dumping artifacts for all views in the streams
         writes_output = self.out_cfg.save_artifacts or self.out_cfg.save_viz or self.out_cfg.save_slam_map
+        needs_final_masks = self.out_cfg.save_artifacts or self.out_cfg.save_viz or self.return_output_streams
+        if self.out_cfg.invisible_mask.enabled and needs_final_masks:
+            output_streams = [
+                add_invisible_masks(output_stream, self.out_cfg.invisible_mask.threshold)
+                for output_stream in output_streams
+            ]
+
         if writes_output:
             with progress_stage("Write output files"):
                 for output_stream, artifact_path in zip(output_streams, artifact_paths):

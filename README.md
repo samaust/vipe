@@ -25,6 +25,12 @@ ViPE estimates camera intrinsics, camera motion, and dense near-metric depth map
 - **2025/09**: Add support to run [Lyra](https://github.com/nv-tlabs/lyra) pipeline.
 - **2025/08**: Initial release of ViPE.
 
+## In-memory integration API
+
+`TensorVideoStream` accepts float RGB tensors shaped `[frames, height, width, 3]` in `[0,1]` and keeps its backing storage on CPU. Set `pipeline.return_output_streams = True` to receive processed streams without enabling artifact output, then convert one with `annotation_from_stream` to a validated, CPU-resident `VipeAnnotationData` value.
+
+`save_annotation_data` and `load_annotation_data` round-trip one synchronized pinhole sequence using ViPE's standard `rgb`, `mask`, `depth`, `pose`, `intrinsics`, and `vipe` artifact directories. Loading rejects missing, non-contiguous, mismatched, or non-pinhole data.
+
 ## License
 
 This project will download and install additional third-party **models and softwares**. Note that these models or softwares are not distributed by NVIDIA. Review the license terms of these models and projects before use. This source code, **except for the Unik3D part (which is under the BY-NC-SA 4.0 license)** , is released under the [Apache 2 License](https://www.apache.org/licenses/LICENSE-2.0).

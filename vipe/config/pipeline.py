@@ -89,6 +89,21 @@ class PostConfig(BaseConfigSchema):
     )
 
 
+class InvisibleMaskConfig(BaseConfigSchema):
+    """Final intrinsics-based classification of geometrically invisible pixels."""
+
+    enabled: bool = Field(
+        default=True,
+        description="Replace pixels touching perpendicular or back-facing depth-grid faces with an invisible label.",
+    )
+    threshold: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Maximum face-normal/view-vector dot product classified as invisible.",
+    )
+
+
 class OutputConfig(BaseConfigSchema):
     """Output paths and artifact/visualization controls."""
 
@@ -104,6 +119,10 @@ class OutputConfig(BaseConfigSchema):
         description="Save the sparse SLAM reconstruction map for lightweight COLMAP conversion.",
     )
     save_viz: bool = Field(description="Render MP4 visualization videos for the configured visualization attributes.")
+    invisible_mask: InvisibleMaskConfig = Field(
+        default_factory=InvisibleMaskConfig,
+        description="Final mask classification performed after SLAM and depth post-processing.",
+    )
     viz_downsample: int = Field(ge=1, description="Downsample factor applied when rendering visualization videos.")
     viz_attributes: list[list[FrameAttributeName]] = Field(
         min_length=1,
@@ -124,6 +143,8 @@ class DefaultPipelineConfig(BaseConfigSchema):
 
     @model_validator(mode="after")
     def normalize_fused_ba(self) -> DefaultPipelineConfig:
+        if self.output.invisible_mask.enabled and self.init.camera_type != "pinhole":
+            raise ValueError("output.invisible_mask is only supported for pinhole camera pipelines")
         # Monocular pipeline: always single-view; the fused kernel additionally needs a
         # pinhole camera model.
         self.slam.ba.fused = self.slam.resolve_fused(
@@ -147,6 +168,8 @@ class PanoramaPipelineConfig(BaseConfigSchema):
 
     @model_validator(mode="after")
     def normalize_fused_ba(self) -> PanoramaPipelineConfig:
+        if self.output.invisible_mask.enabled:
+            raise ValueError("output.invisible_mask is not supported for panorama pipelines")
         # Virtual views are pinhole, but multiple oriented views form a non-identity rig
         # that the fused kernel cannot handle; only the degenerate single-view panorama
         # (one centered, identity-rig view) is fused-eligible.

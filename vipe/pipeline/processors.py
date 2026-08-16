@@ -31,7 +31,14 @@ from vipe.priors.depth.videodepthanything import VideoDepthAnythingDepthModel
 from vipe.priors.geocalib import GeoCalib
 from vipe.priors.track_anything import TrackAnythingPipeline
 from vipe.slam.interface import SLAMOutput
-from vipe.streams.base import CachedVideoStream, FrameAttribute, StreamProcessor, VideoFrame, VideoStream
+from vipe.streams.base import (
+    AsyncCachedVideoStream,
+    CachedVideoStream,
+    FrameAttribute,
+    StreamProcessor,
+    VideoFrame,
+    VideoStream,
+)
 from vipe.utils.cameras import CameraType
 from vipe.utils.depth import get_camera_rays
 from vipe.utils.device import get_device
@@ -40,6 +47,7 @@ from vipe.utils.logging import pbar
 from vipe.utils.misc import unpack_optional
 from vipe.utils.model_cache import ModelCache
 from vipe.utils.morph import erode
+from vipe.utils.visibility import invisible_pixels_from_depth
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +212,79 @@ class TrackAnythingProcessor(StreamProcessor):
             yield self._process_frame(frame_idx, frame)
 
         yield from flush_pending()
+
+
+class InvisibleMaskProcessor(StreamProcessor):
+    """Apply the final invisible label without modifying ViPE's binary processing mask."""
+
+    def __init__(self, invisible_id: int, threshold: float) -> None:
+        if not 0 <= invisible_id <= 255:
+            raise ValueError(f"Invisible mask ID must fit in uint8, got {invisible_id}")
+        self.invisible_id = invisible_id
+        self.threshold = threshold
+
+    def __call__(self, frame_idx: int, frame: VideoFrame) -> VideoFrame:
+        if frame.instance is None:
+            return frame
+        if frame.camera_type != CameraType.PINHOLE:
+            raise ValueError(
+                f"Invisible mask classification requires a pinhole camera at frame {frame_idx}, "
+                f"got {frame.camera_type}"
+            )
+        if frame.metric_depth is None:
+            raise ValueError(f"Invisible mask classification requires metric depth at frame {frame_idx}")
+        if frame.intrinsics is None:
+            raise ValueError(f"Invisible mask classification requires intrinsics at frame {frame_idx}")
+        if frame.instance.shape != frame.metric_depth.shape:
+            raise ValueError(
+                f"Instance mask and metric depth shapes differ at frame {frame_idx}: "
+                f"{tuple(frame.instance.shape)} != {tuple(frame.metric_depth.shape)}"
+            )
+
+        invisible = invisible_pixels_from_depth(frame.metric_depth, frame.intrinsics, self.threshold)
+        instance = frame.instance.clone()
+        instance[invisible] = self.invisible_id
+        phrases = dict(frame.instance_phrases or {})
+        phrases[self.invisible_id] = "invisible"
+        frame.instance = instance
+        frame.instance_phrases = phrases
+        return frame
+
+
+def add_invisible_masks(
+    video_stream: VideoStream,
+    threshold: float,
+) -> CachedVideoStream | AsyncCachedVideoStream:
+    """Reserve one sequence-wide label and finalize every instance mask in a cached stream."""
+    if isinstance(video_stream, (CachedVideoStream, AsyncCachedVideoStream)):
+        cached_stream = video_stream
+    else:
+        cached_stream = CachedVideoStream(video_stream, "Preparing invisible masks")
+    if len(cached_stream) > 0:
+        _ = cached_stream[len(cached_stream) - 1]
+
+    maximum_id = -1
+    has_instances = False
+    for frame in cached_stream.data:
+        if frame.instance is None:
+            continue
+        has_instances = True
+        if frame.instance.numel() > 0:
+            maximum_id = max(maximum_id, int(frame.instance.max().item()))
+        if frame.instance_phrases:
+            maximum_id = max(maximum_id, max(frame.instance_phrases))
+
+    if not has_instances:
+        return cached_stream
+
+    invisible_id = maximum_id + 1
+    if invisible_id > 255:
+        raise ValueError("Cannot allocate an invisible mask label: sequence already uses uint8 ID 255")
+
+    processor = InvisibleMaskProcessor(invisible_id, threshold)
+    for frame_idx, frame in enumerate(cached_stream.data):
+        cached_stream.data[frame_idx] = processor(frame_idx, frame)
+    return cached_stream
 
 
 class AdaptiveDepthProcessor(StreamProcessor):

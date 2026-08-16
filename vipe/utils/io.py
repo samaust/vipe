@@ -25,9 +25,8 @@ from typing import Iterator, cast
 import cv2
 import imageio
 import imageio_ffmpeg
-import Imath
 import numpy as np
-import OpenEXR
+import OpenImageIO as oiio
 import torch
 
 from vipe.ext.lietorch import SE3
@@ -325,16 +324,23 @@ def save_depth_artifacts(out_path: ArtifactPath, cached_final_stream: VideoStrea
     ]
     if len(metric_depth_list) > 0:
         path.parent.mkdir(exist_ok=True, parents=True)
-        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
-            for frame_idx, metric_depth in metric_depth_list:
-                height, width = metric_depth.shape
-                header = OpenEXR.Header(width, height)
-                header["channels"] = {"Z": Imath.Channel(Imath.PixelType(Imath.PixelType.HALF))}
-                with tempfile.NamedTemporaryFile(suffix=".exr") as f:
-                    exr = OpenEXR.OutputFile(f.name, header)
-                    exr.writePixels({"Z": metric_depth.astype(np.float16).tobytes()})
-                    exr.close()
-                    z.write(f.name, f"{frame_idx:05d}.exr")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory) / "depth.exr"
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                for frame_idx, metric_depth in metric_depth_list:
+                    height, width = metric_depth.shape
+                    spec = oiio.ImageSpec(width, height, 1, oiio.HALF)
+                    spec.channelnames = ("Z",)
+                    output = oiio.ImageOutput.create(str(temporary_path))
+                    if output is None or not output.open(str(temporary_path), spec):
+                        reason = oiio.geterror() if output is None else output.geterror()
+                        raise RuntimeError(f"Failed to create EXR depth frame {frame_idx}: {reason}")
+                    try:
+                        if not output.write_image(metric_depth.astype(np.float32)[..., None]):
+                            raise RuntimeError(f"Failed to encode EXR depth frame {frame_idx}: {output.geterror()}")
+                    finally:
+                        output.close()
+                    z.write(temporary_path, f"{frame_idx:05d}.exr")
 
 
 def read_depth_artifacts(zip_file_path: Path) -> Iterator[tuple[int, torch.Tensor]]:
@@ -342,16 +348,30 @@ def read_depth_artifacts(zip_file_path: Path) -> Iterator[tuple[int, torch.Tenso
     Read metric depth from zipped exr files.
     """
     valid_width, valid_height = 0, 0
-    with zipfile.ZipFile(zip_file_path, "r") as z:
-        for file_name in sorted(z.namelist()):
-            frame_idx = int(file_name.split(".")[0])
-            with z.open(file_name) as f:
-                try:
-                    exr = OpenEXR.InputFile(f)
-                except OSError:
-                    # Sometimes EXR loader might fail, we return all nan maps.
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        temporary_path = Path(temporary_directory) / "depth.exr"
+        with zipfile.ZipFile(zip_file_path, "r") as z:
+            for file_name in sorted(z.namelist()):
+                frame_idx = int(file_name.split(".")[0])
+                with z.open(file_name) as source, temporary_path.open("wb") as destination:
+                    destination.write(source.read())
+                image_input = oiio.ImageInput.open(str(temporary_path))
+                depth_data = None
+                if image_input is not None:
+                    try:
+                        spec = image_input.spec()
+                        if "Z" in spec.channelnames:
+                            channel_index = spec.channelnames.index("Z")
+                            pixels = image_input.read_image(channel_index, channel_index + 1, oiio.FLOAT)
+                            if pixels is not None:
+                                depth_data = np.asarray(pixels).reshape(spec.height, spec.width)
+                    finally:
+                        image_input.close()
+                if depth_data is None:
+                    # Sometimes EXR loading fails; preserve the previous behavior by returning a NaN map.
                     logger.warning(f"Failed to load EXR file {zip_file_path}-{file_name}. Returning all nan maps.")
-                    assert valid_width > 0 and valid_height > 0
+                    if valid_width <= 0 or valid_height <= 0:
+                        raise ValueError(f"The first depth frame in {zip_file_path} is not a valid Z-channel EXR")
                     yield (
                         frame_idx,
                         torch.full(
@@ -361,12 +381,7 @@ def read_depth_artifacts(zip_file_path: Path) -> Iterator[tuple[int, torch.Tenso
                         ),
                     )
                     continue
-                header = exr.header()
-                dw = header["dataWindow"]
-                valid_width = width = dw.max.x - dw.min.x + 1
-                valid_height = height = dw.max.y - dw.min.y + 1
-                channels = exr.channels(["Z"])
-                depth_data = np.frombuffer(channels[0], dtype=np.float16).reshape((height, width))
+                valid_height, valid_width = depth_data.shape
                 yield frame_idx, torch.from_numpy(depth_data.copy()).float()
 
 

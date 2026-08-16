@@ -6,8 +6,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-import hydra
+from hydra._internal.config_loader_impl import ConfigLoaderImpl
+from hydra._internal.hydra import Hydra
+from hydra._internal.utils import create_config_search_path
+from hydra.types import RunMode
 from omegaconf import DictConfig, OmegaConf
+from omegaconf import open_dict
 
 from vipe._paths import get_config_path
 from vipe.config.vipe import ViPEConfig
@@ -22,6 +26,26 @@ def register_config_resolvers() -> None:
         OmegaConf.register_new_resolver("eq", lambda a, b: a == b)
     if not OmegaConf.has_resolver("neq"):
         OmegaConf.register_new_resolver("neq", lambda a, b: a != b)
+
+
+def _compose_config(config_dir: Path, config_name: str, overrides: list[str]) -> DictConfig:
+    """Compose with a private loader instead of Hydra's process-global instance."""
+    search_path = create_config_search_path(search_path_dir=str(config_dir))
+    hydra = Hydra(
+        task_name="vipe",
+        config_loader=ConfigLoaderImpl(config_search_path=search_path),
+    )
+    config = hydra.compose_config(
+        config_name=config_name,
+        overrides=overrides,
+        run_mode=RunMode.RUN,
+        from_shell=False,
+        with_log_configuration=False,
+    )
+    with open_dict(config):
+        if "hydra" in config:
+            del config["hydra"]
+    return config
 
 
 def parse_untyped_config(
@@ -46,8 +70,7 @@ def parse_untyped_config(
         compose_config_dir = config_registry_dir
         compose_config_name = str(config_name_path)
 
-    with hydra.initialize_config_dir(config_dir=str(compose_config_dir), version_base=None):
-        config = hydra.compose(config_name=compose_config_name, overrides=hydra_args_list)
+    config = _compose_config(compose_config_dir, compose_config_name, hydra_args_list)
 
     OmegaConf.resolve(config)
     return config

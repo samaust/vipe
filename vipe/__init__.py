@@ -23,7 +23,16 @@ from vipe._paths import get_config_path
 if TYPE_CHECKING:
     from vipe.pipeline import make_pipeline as make_pipeline
 
-__all__ = ["__version__", "__version_info__", "get_config_path", "make_pipeline"]
+__all__ = [
+    "VipeAnnotationData",
+    "annotation_from_stream",
+    "load_annotation_data",
+    "save_annotation_data",
+    "__version__",
+    "__version_info__",
+    "get_config_path",
+    "make_pipeline",
+]
 
 
 def _version_info(version_string: str) -> tuple[int, ...]:
@@ -44,6 +53,10 @@ if not OmegaConf.has_resolver("neq"):
 
 
 def __getattr__(name: str) -> Any:
+    if name in {"VipeAnnotationData", "annotation_from_stream", "load_annotation_data", "save_annotation_data"}:
+        from vipe import annotation
+
+        return getattr(annotation, name)
     if name == "make_pipeline":
         from vipe.pipeline import make_pipeline
 

@@ -21,6 +21,7 @@ from vipe.config.pipeline import (
     DefaultInitConfig,
     DefaultPipelineConfig,
     InstanceInitConfig,
+    InvisibleMaskConfig,
     OutputConfig,
     PanoramaInitConfig,
     PanoramaPipelineConfig,
@@ -45,6 +46,7 @@ MODEL_SECTIONS: list[tuple[str, list[type[BaseConfigSchema]]]] = [
             PanoramaInitConfig,
             VirtualCameraConfig,
             PostConfig,
+            InvisibleMaskConfig,
             OutputConfig,
             DefaultPipelineConfig,
             PanoramaPipelineConfig,
@@ -70,6 +72,8 @@ def _escape_table_cell(value: str) -> str:
 
 
 def _format_code(value: Any) -> str:
+    if isinstance(value, BaseConfigSchema):
+        value = value.model_dump()
     if value is None:
         return "`null`"
     if value is True:
@@ -133,6 +137,8 @@ def _constraint_parts(property_schema: dict[str, Any]) -> list[str]:
 def _field_default(field: FieldInfo) -> str:
     if field.is_required():
         return "required"
+    if field.default_factory is not None:
+        return _format_code(field.get_default(call_default_factory=True))
     return _format_code(field.default)
 
 
