@@ -20,9 +20,22 @@ class BertModelWarper(nn.Module):
         self.encoder = bert_model.encoder
         self.pooler = bert_model.pooler
 
-        self.get_extended_attention_mask = bert_model.get_extended_attention_mask
-        self.invert_attention_mask = bert_model.invert_attention_mask
-        self.get_head_mask = bert_model.get_head_mask
+    @staticmethod
+    def _to_additive_mask(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        """Convert a 2D (bs, kv) or 3D (bs, q, kv) keep-mask into a 4D additive mask
+        of shape (bs, 1, q|1, kv), as BERT's attention layers expect.
+
+        Replaces ``get_extended_attention_mask`` / ``invert_attention_mask``, which were
+        removed from ``PreTrainedModel`` in transformers v5.
+        """
+        if mask.dim() == 3:
+            mask = mask[:, None, :, :]
+        elif mask.dim() == 2:
+            mask = mask[:, None, None, :]
+        elif mask.dim() != 4:
+            raise ValueError(f"Wrong shape for attention_mask (shape {tuple(mask.shape)})")
+        mask = mask.to(dtype=dtype)
+        return (1.0 - mask) * torch.finfo(dtype).min
 
     def forward(
         self,
@@ -71,7 +84,7 @@ class BertModelWarper(nn.Module):
             else self.config.output_hidden_states
         )
         return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
+            return_dict if return_dict is not None else getattr(self.config, "return_dict", True)
         )
 
         if self.config.is_decoder:
@@ -106,36 +119,6 @@ class BertModelWarper(nn.Module):
         if token_type_ids is None:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
-        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
-        # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
-            attention_mask, input_shape, device
-        )
-
-        # If a 2D or 3D attention mask is provided for the cross-attention
-        # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
-        if self.config.is_decoder and encoder_hidden_states is not None:
-            encoder_batch_size, encoder_sequence_length, _ = (
-                encoder_hidden_states.size()
-            )
-            encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
-            if encoder_attention_mask is None:
-                encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
-            encoder_extended_attention_mask = self.invert_attention_mask(
-                encoder_attention_mask
-            )
-        else:
-            encoder_extended_attention_mask = None
-        # if os.environ.get('IPDB_SHILONG_DEBUG', None) == 'INFO':
-        #     import ipdb; ipdb.set_trace()
-
-        # Prepare head mask if needed
-        # 1.0 in head_mask indicate we keep the head
-        # attention_probs has shape bsz x n_heads x N x N
-        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
-        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
-
         embedding_output = self.embeddings(
             input_ids=input_ids,
             position_ids=position_ids,
@@ -144,33 +127,49 @@ class BertModelWarper(nn.Module):
             past_key_values_length=past_key_values_length,
         )
 
+        # GroundingDINO passes a 3D [batch_size, from_seq_length, to_seq_length] self-attention
+        # mask, so build the broadcastable 4D additive mask here rather than relying on
+        # transformers' mask helpers (their API changed in v5).
+        extended_attention_mask = self._to_additive_mask(attention_mask, embedding_output.dtype)
+
+        if self.config.is_decoder and encoder_hidden_states is not None:
+            encoder_batch_size, encoder_sequence_length, _ = (
+                encoder_hidden_states.size()
+            )
+            encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
+            if encoder_attention_mask is None:
+                encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
+            encoder_extended_attention_mask = self._to_additive_mask(
+                encoder_attention_mask, embedding_output.dtype
+            )
+        else:
+            encoder_extended_attention_mask = None
+
+        # head_mask, output_attentions and output_hidden_states are not supported by
+        # BertEncoder in transformers v5; GroundingDINO never uses them.
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
-            head_mask=head_mask,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_extended_attention_mask,
             past_key_values=past_key_values,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
         )
-        sequence_output = encoder_outputs[0]
+        sequence_output = encoder_outputs.last_hidden_state
         pooled_output = (
             self.pooler(sequence_output) if self.pooler is not None else None
         )
 
         if not return_dict:
-            return (sequence_output, pooled_output) + encoder_outputs[1:]
+            return (sequence_output, pooled_output)
 
         return BaseModelOutputWithPoolingAndCrossAttentions(
             last_hidden_state=sequence_output,
             pooler_output=pooled_output,
             past_key_values=encoder_outputs.past_key_values,
-            hidden_states=encoder_outputs.hidden_states,
-            attentions=encoder_outputs.attentions,
-            cross_attentions=encoder_outputs.cross_attentions,
+            hidden_states=getattr(encoder_outputs, "hidden_states", None),
+            attentions=getattr(encoder_outputs, "attentions", None),
+            cross_attentions=getattr(encoder_outputs, "cross_attentions", None),
         )
 
 
