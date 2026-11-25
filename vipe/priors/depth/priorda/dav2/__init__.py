@@ -27,7 +27,7 @@ model_configs = {
 def build_backbone(depth_size="vitb", encoder_cond_dim=-1, model_path=None):
     core = DepthAnythingV2(**model_configs[depth_size], encoder_cond_dim=encoder_cond_dim)
 
-    state_dict = torch.load(model_path, map_location="cpu")
+    state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
     core.init_state_dict(state_dict=state_dict)
 
     return core

@@ -31,8 +31,13 @@ class Detector:
             checkpoint = torch.hub.load_state_dict_from_url(
                 "https://huggingface.co/ShilongLiu/GroundingDINO/resolve/main/groundingdino_swint_ogc.pth",
                 map_location="cpu",
+                weights_only=True,
             )
-            gd.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
+            # The checkpoint also carries the text encoder, which is built without
+            # pretrained weights, so any missing key would leave it randomly initialized.
+            missing, _ = gd.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
+            if missing:
+                raise RuntimeError(f"GroundingDINO checkpoint is missing parameters: {missing[:5]}")
             gd.to(self.device)
             gd.eval()
             return gd

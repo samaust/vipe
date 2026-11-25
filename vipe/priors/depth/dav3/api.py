@@ -187,12 +187,12 @@ class DepthAnything3(nn.Module):
         model = cls(model_name=model_name or _model_name_from_repo_id(repo_id), **kwargs)
         if weights_path is None:
             try:
-                from huggingface_hub import hf_hub_download
+                from vipe.utils.hub import hf_hub_file
             except ModuleNotFoundError as exc:
                 raise ModuleNotFoundError(
                     "huggingface_hub is required to fetch DAv3 weights. Run `uv sync` or pass `weights_path=...`."
                 ) from exc
-            weights_path = hf_hub_download(repo_id=repo_id, filename=SAFETENSORS_NAME)
+            weights_path = hf_hub_file(repo_id=repo_id, filename=SAFETENSORS_NAME)
 
         state = _load_state_dict_file(weights_path)
         model._load_flexible_state_dict(state)

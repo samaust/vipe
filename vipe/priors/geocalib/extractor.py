@@ -35,10 +35,10 @@ class GeoCalib(nn.Module):
             # load checkpoint
             model_dir = f"{torch.hub.get_dir()}/geocalib"
             state_dict = torch.hub.load_state_dict_from_url(
-                url, model_dir, map_location="cpu", file_name=f"{weights}.tar"
+                url, model_dir, map_location="cpu", file_name=f"{weights}.tar", weights_only=True
             )
         elif Path(weights).exists():
-            state_dict = torch.load(weights, map_location="cpu")
+            state_dict = torch.load(weights, map_location="cpu", weights_only=True)
         else:
             raise ValueError(f"Invalid weights: {weights}")
 

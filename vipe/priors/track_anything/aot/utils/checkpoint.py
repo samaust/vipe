@@ -79,12 +79,24 @@ def load_network_and_optimizer_v2(net, opt, pretrained_dir, gpu, scaler=None):
     return net.to(device), opt, pretrained_dict_remove
 
 
+def _numpy_checkpoint_globals() -> list:
+    # Released AOT checkpoints pickle numpy scalars (training metadata) next to
+    # the tensors. Allow exactly those types instead of disabling weights_only.
+    numpy_core = getattr(np, "_core", None) or np.core
+    return [
+        (numpy_core.multiarray.scalar, "numpy.core.multiarray.scalar"),
+        np.dtype,
+        np.dtypes.Float64DType,
+    ]
+
+
 def load_network(net, pretrained_dir, gpu):
-    pretrained = torch.load(
-        pretrained_dir,
-        map_location=_device(gpu),
-        weights_only=False,
-    )
+    with torch.serialization.safe_globals(_numpy_checkpoint_globals()):
+        pretrained = torch.load(
+            pretrained_dir,
+            map_location=_device(gpu),
+            weights_only=True,
+        )
     if "state_dict" in pretrained.keys():
         pretrained_dict = pretrained["state_dict"]
     elif "model" in pretrained.keys():

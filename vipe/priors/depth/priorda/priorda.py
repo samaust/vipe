@@ -10,8 +10,8 @@ from typing import Union
 import numpy as np
 import torch
 import torch.nn as nn
-from huggingface_hub import hf_hub_download
 from vipe.utils.device import get_device
+from vipe.utils.hub import hf_hub_file
 
 from .dav2 import build_backbone
 from .depth_completion import DepthCompletion
@@ -50,7 +50,7 @@ class PriorDepthAnything(nn.Module):
             raise ValueError(f"{self.args.frozen_model_size} coming soon...")
         fmde_name = f"depth_anything_v2_{self.args.frozen_model_size}.pth"  # Download model checkpoints
         if fmde_dir is None:
-            fmde_path = hf_hub_download(repo_id=self.args.repo_name, filename=fmde_name)
+            fmde_path = hf_hub_file(repo_id=self.args.repo_name, filename=fmde_name)
         else:
             fmde_path = os.path.join(fmde_dir, fmde_name)
 
@@ -68,7 +68,7 @@ class PriorDepthAnything(nn.Module):
                 raise ValueError(f"{self.args.conditioned_model_size} coming soon...")
             cmde_name = f"depth_anything_v2_{self.args.conditioned_model_size}.pth"  # Download model checkpoints
             if cmde_dir is None:
-                cmde_path = hf_hub_download(repo_id=self.args.repo_name, filename=cmde_name)
+                cmde_path = hf_hub_file(repo_id=self.args.repo_name, filename=cmde_name)
             else:
                 cmde_path = os.path.join(cmde_dir, cmde_name)
 
@@ -85,11 +85,11 @@ class PriorDepthAnything(nn.Module):
     def load_checkpoints(self, model, ckpt_dir, device=None):
         ckpt_name = f"prior_depth_anything_{self.args.conditioned_model_size}.pth"
         if ckpt_dir is None:
-            ckpt_path = hf_hub_download(repo_id=self.args.repo_name, filename=ckpt_name)
+            ckpt_path = hf_hub_file(repo_id=self.args.repo_name, filename=ckpt_name)
         else:
             ckpt_path = os.path.join(ckpt_dir, ckpt_name)
 
-        state_dict = torch.load(ckpt_path, map_location="cpu")
+        state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=True)
 
         new_state_dict = OrderedDict()
         for key, value in state_dict["model"].items():
